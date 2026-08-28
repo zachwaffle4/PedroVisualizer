@@ -132,7 +132,10 @@
     saveSessionSnapshot,
     type SessionSnapshot,
   } from "./lib/session/sessionSnapshot";
-  import * as browserFileStore from "./utils/browserFileStore";
+  import * as browserFileStore from "./utils/fileStore";
+  import { isDesktop } from "./utils/platform";
+  import * as desktopFiles from "./utils/desktopFiles";
+  import type { SaveData } from "./utils/file";
   import { onDestroy, onMount, tick } from "svelte";
   import { debounce } from "lodash";
   import { createHistory, type AppState } from "./utils/history";
@@ -1050,6 +1053,26 @@
     await saveAllAdditionalPaths();
     const content = JSON.stringify(buildProjectData(), null, 2);
 
+    // Desktop build: use the OS save dialog and write straight to disk.
+    if (isDesktop()) {
+      try {
+        const saved = await desktopFiles.saveProjectAs(
+          content,
+          $currentFilePath
+            ? desktopFiles.baseName($currentFilePath)
+            : "path.pp",
+        );
+        if (!saved) return; // cancelled
+        currentFilePath.set(saved);
+        isUnsaved.set(false);
+        return;
+      } catch (err) {
+        console.error("Native save dialog failed:", err);
+        alert("Failed to save file.");
+        return;
+      }
+    }
+
     // Prefer File System Access API if available: opens native Save dialog
     if (win.showSaveFilePicker) {
       try {
@@ -1457,23 +1480,68 @@
       await saveAllAdditionalPaths();
       const content = JSON.stringify(buildProjectData(), null, 2);
 
+      // On the desktop build writeFile lands on the real filesystem, so the
+      // wording distinguishes it from the browser's localStorage-backed store.
+      const store = isDesktop() ? "disk" : "project storage";
+
       if ($currentFilePath) {
         await browserFileStore.writeFile($currentFilePath, content);
         isUnsaved.set(false);
         // Provide simple feedback
-        alert(`Saved to project storage: ${$currentFilePath}`);
+        alert(`Saved to ${store}: ${$currentFilePath}`);
       } else {
-        // No current project file selected — save into browser cache as a new file
+        // No current project file selected — save as a new file
         const defaultName = `path_${Date.now()}.pp`;
         await browserFileStore.writeFile(defaultName, content);
         currentFilePath.set(defaultName);
         isUnsaved.set(false);
-        alert(`Saved to project storage as: ${defaultName}`);
+        alert(`Saved to ${store} as: ${defaultName}`);
       }
     } catch (err) {
-      console.error("Failed to save project to storage:", err);
-      alert("Failed to save project to browser storage.");
+      console.error("Failed to save project:", err);
+      alert(
+        isDesktop()
+          ? "Failed to save file to disk."
+          : "Failed to save project to browser storage.",
+      );
     }
+  }
+
+  /** Apply a parsed .pp payload to app state, whatever its source. */
+  function loadData(data: SaveData) {
+    // Ensure startPoint has all required fields
+    startPoint = data.startPoint || {
+      x: 72,
+      y: 72,
+      heading: "tangential",
+      reverse: false,
+    };
+
+    // Normalize lines with all required fields
+    const normalizedLines = normalizeLines(data.lines || []);
+    lines = normalizedLines;
+
+    // Derive sequence from data or create default
+    sequence = (
+      data.sequence && data.sequence.length
+        ? data.sequence
+        : normalizedLines.map((ln) => ({
+            kind: "path",
+            lineId: ln.id!,
+          }))
+    ) as SequenceItem[];
+    // Load shapes with defaults
+    shapes = data.shapes || [];
+    fieldPoints = normalizeFieldPoints(data);
+    // Load settings (including robot size) if present
+    if (data.settings) {
+      settings = { ...settings, ...data.settings };
+    }
+
+    activePaths.set(Array.isArray(data.activePaths) ? data.activePaths : []);
+
+    isUnsaved.set(false);
+    recordChange();
   }
 
   async function loadFile(evt: Event) {
@@ -1493,39 +1561,7 @@
 
     // Parse and load the uploaded file, then cache it into the browser store.
     loadTrajectoryFromFile(evt, async (data) => {
-      // Ensure startPoint has all required fields
-      startPoint = data.startPoint || {
-        x: 72,
-        y: 72,
-        heading: "tangential",
-        reverse: false,
-      };
-
-      // Normalize lines with all required fields
-      const normalizedLines = normalizeLines(data.lines || []);
-      lines = normalizedLines;
-
-      // Derive sequence from data or create default
-      sequence = (
-        data.sequence && data.sequence.length
-          ? data.sequence
-          : normalizedLines.map((ln) => ({
-              kind: "path",
-              lineId: ln.id!,
-            }))
-      ) as SequenceItem[];
-      // Load shapes with defaults
-      shapes = data.shapes || [];
-      fieldPoints = normalizeFieldPoints(data);
-      // Load settings (including robot size) if present
-      if (data.settings) {
-        settings = { ...settings, ...data.settings };
-      }
-
-      activePaths.set(Array.isArray(data.activePaths) ? data.activePaths : []);
-
-      isUnsaved.set(false);
-      recordChange();
+      loadData(data);
 
       // Cache the uploaded file into the browser-backed store for later access
       try {
@@ -1539,6 +1575,32 @@
 
     // Reset the file input
     elem.value = "";
+  }
+
+  /**
+   * Desktop build: open a .pp file from anywhere on disk through the OS dialog.
+   * The web build keeps using the hidden <input type="file"> in the navbar.
+   */
+  async function openFileNative() {
+    try {
+      const picked = await desktopFiles.openProject();
+      if (!picked) return; // cancelled
+
+      let data: SaveData;
+      try {
+        data = JSON.parse(picked.content) as SaveData;
+      } catch (err) {
+        console.error("Failed to parse path file:", err);
+        alert(`${picked.name} is not a valid .pp file.`);
+        return;
+      }
+
+      loadData(data);
+      currentFilePath.set(picked.path);
+    } catch (err) {
+      console.error("Native open dialog failed:", err);
+      alert("Failed to open file.");
+    }
   }
 
   // Electron file-copying logic removed — browser store and upload are used instead.
@@ -2506,6 +2568,7 @@
     {saveProject}
     {saveFileAs}
     {loadFile}
+    openFileNative={isDesktop() ? openFileNative : null}
     {undoAction}
     {redoAction}
     {recordChange}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import Modal from "./ui/Modal.svelte";
-  import * as browserFileStore from "../../utils/browserFileStore";
+  import * as browserFileStore from "../../utils/fileStore";
   import { activePaths } from "../../stores";
 
   interface Props {

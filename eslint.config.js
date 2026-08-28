@@ -54,6 +54,7 @@ export default ts.config(
       "dist/",
       "out/",
       "public/",
+      "src-tauri/target/",
       "node_modules/",
       "*.config.js",
       "*.config.ts",

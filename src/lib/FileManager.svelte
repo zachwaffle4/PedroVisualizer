@@ -11,7 +11,7 @@
     Shape,
     SequenceItem,
   } from "../types";
-  import * as browserFileStore from "../utils/browserFileStore";
+  import * as browserFileStore from "../utils/fileStore";
   import {
     currentFilePath,
     isUnsaved,

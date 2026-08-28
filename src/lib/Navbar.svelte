@@ -36,6 +36,8 @@
 
   interface Props {
     loadFile: (evt: any) => any;
+    /** Set only in the desktop build; when present the OS dialog replaces the file input. */
+    openFileNative?: (() => any) | null;
     startPoint: Point;
     lines: Line[];
     shapes: Shape[];
@@ -62,6 +64,7 @@
 
   let {
     loadFile,
+    openFileNative = null,
     startPoint = $bindable(),
     lines = $bindable(),
     shapes = $bindable(),
@@ -490,6 +493,13 @@
         type="file"
         accept=".pp"
         onchange={loadFile}
+        onclick={(e) => {
+          // Desktop build: the OS dialog replaces the browser file picker.
+          if (openFileNative) {
+            e.preventDefault();
+            openFileNative();
+          }
+        }}
         class="hidden"
       />
       <label
