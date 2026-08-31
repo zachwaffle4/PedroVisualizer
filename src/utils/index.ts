@@ -1,5 +1,4 @@
 export * from "./animation";
-export * from "./codeExporter";
 export * from "./color";
 export * from "./normalize";
 export * from "./project";

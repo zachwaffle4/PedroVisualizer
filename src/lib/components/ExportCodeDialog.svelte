@@ -12,7 +12,7 @@
     generateKotlinCode,
     generatePointsArray,
     generateSequentialCommandCode,
-  } from "../../utils/codeExporter";
+  } from "../codegen";
   import { basename } from "../../utils/filename";
 
   interface Props {
