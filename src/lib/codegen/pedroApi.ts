@@ -4,9 +4,7 @@ export const PEDRO_API = {
   factoryVar: "poseFactory",
 
   poseFactory(mirrorHorizontally: boolean): string {
-    const mirror = mirrorHorizontally
-      ? `.mirrorX(${FIELD_SIZE / 2})`
-      : "";
+    const mirror = mirrorHorizontally ? `.mirrorX(${FIELD_SIZE / 2})` : "";
     return `PoseFactory.degrees()${mirror}`;
   },
 

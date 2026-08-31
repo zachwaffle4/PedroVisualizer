@@ -370,10 +370,9 @@ body {
   /* Five tracks: left rail, divider, centre stage, divider, right rail.
      The rails use minmax(0, …) so a window too narrow for their saved widths
      shrinks them instead of overflowing the shell. */
-  grid-template-columns: minmax(0, var(--left-panel-width, 330px)) 18px minmax(
-      0,
-      1fr
-    ) 18px minmax(0, var(--right-panel-width, 360px));
+  grid-template-columns:
+    minmax(0, var(--left-panel-width, 330px)) 18px minmax(0, 1fr)
+    18px minmax(0, var(--right-panel-width, 360px));
   gap: 0;
   align-items: stretch;
 }
