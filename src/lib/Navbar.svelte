@@ -32,7 +32,8 @@
   import { downloadBlob } from "../utils/download";
   import NavDivider from "./components/ui/NavDivider.svelte";
   import ViewToggles from "./components/ViewToggles.svelte";
-  import html2canvas from "html2canvas";
+  import { showToast } from "./toast";
+  import { exportElementAsPng } from "../utils/exportImage";
 
   interface Props {
     loadFile: (evt: any) => any;
@@ -89,6 +90,7 @@
   let fileManagerOpen = $state(false);
   let settingsOpen = $state(false);
   let exportMenuOpen = $state(false);
+  let exportingFieldImage = $state(false);
   let exportDialogOpen = $state(false);
   let exportDialog = $state<ExportCodeDialog>()!;
   let multiplePathsDialogOpen = $state(false);
@@ -172,34 +174,26 @@
       alert("Canvas not ready. Please try again.");
       return;
     }
+    if (exportingFieldImage) return;
 
+    exportingFieldImage = true;
     try {
-      // Use html2canvas to capture the entire field including background, paths, and robots
-      const canvas = await html2canvas(twoElement, {
-        backgroundColor: null,
+      // Capture the entire field including background, paths, and robots
+      const blob = await exportElementAsPng(twoElement, {
         scale: 2, // 2x resolution for better quality
-        logging: false,
-        useCORS: true, // Allow cross-origin images
-        allowTaint: true,
       });
 
-      // Convert canvas to blob and download
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const fileName = $currentFilePath
-            ? pathStem($currentFilePath)
-            : "field";
-          downloadBlob(blob, `${fileName}_field.png`);
-        } else {
-          alert("Failed to create image blob.");
-        }
-      });
+      const fileName = $currentFilePath ? pathStem($currentFilePath) : "field";
+      downloadBlob(blob, `${fileName}_field.png`);
+      showToast("Exported field as image", "success");
     } catch (error) {
       console.error("Export error:", error);
       alert(
         "Failed to export field as image: " +
           (error instanceof Error ? error.message : String(error)),
       );
+    } finally {
+      exportingFieldImage = false;
     }
   }
 
@@ -675,8 +669,12 @@
                 Sequential Command
               </button>
             {/if}
-            <button onclick={exportFieldAsImage} class="console-menu-item">
-              Field as Image
+            <button
+              onclick={exportFieldAsImage}
+              disabled={exportingFieldImage}
+              class="console-menu-item"
+            >
+              {exportingFieldImage ? "Exporting…" : "Field as Image"}
             </button>
             <button
               onclick={async () => {
