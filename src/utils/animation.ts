@@ -142,10 +142,10 @@ export function calculateRobotState(
     };
   } else {
     // --- MOVEMENT TRAVEL ---
-    const lineIdx = activeEvent.lineIndex!;
+    const lineIdx = lines.findIndex((line) => line.id === activeEvent.lineId);
     const currentLine = lines[lineIdx];
     const prevPoint = segmentStartAt(startPoint, lines, lineIdx);
-    if (!prevPoint) {
+    if (!currentLine || !prevPoint) {
       return { x: xScale(startPoint.x), y: yScale(startPoint.y), heading: 0 };
     }
 
@@ -731,7 +731,7 @@ export function generateOnionLayers(
   y: number;
   heading: number;
   corners: BasePoint[];
-  lineIndex: number;
+  lineId: string;
 }> {
   if (lines.length === 0) return [];
 
@@ -740,7 +740,7 @@ export function generateOnionLayers(
     y: number;
     heading: number;
     corners: BasePoint[];
-    lineIndex: number;
+    lineId: string;
   }> = [];
 
   // Calculate total path length
@@ -793,7 +793,7 @@ export function generateOnionLayers(
           y: robotPosInches.y,
           heading: heading,
           corners: corners,
-          lineIndex: li,
+          lineId: line.id,
         });
 
         nextLayerDistance += spacing;

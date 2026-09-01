@@ -6,14 +6,14 @@
     lineCount: number;
     pathPreviewItems: {
       index: number;
-      lineIndex: number;
+      lineId: string;
       name: string;
       x: string;
       y: string;
     }[];
-    selectedLineIndex: number;
+    selectedLineId: string | null;
     onToggleVisibility: () => void;
-    onSelectLine: (lineIndex: number) => void;
+    onSelectLine: (lineId: string) => void;
   }
 
   let {
@@ -22,7 +22,7 @@
     version,
     lineCount,
     pathPreviewItems,
-    selectedLineIndex,
+    selectedLineId,
     onToggleVisibility,
     onSelectLine,
   }: Props = $props();
@@ -63,8 +63,8 @@
       {#each pathPreviewItems as item (item.index)}
         <button
           class="list-item-box compact text-left"
-          class:list-item-box--selected={selectedLineIndex === item.lineIndex}
-          onclick={() => onSelectLine(item.lineIndex)}
+          class:list-item-box--selected={selectedLineId === item.lineId}
+          onclick={() => onSelectLine(item.lineId)}
         >
           <div class="list-item-top">
             <span class="list-item-name">{item.name}</span>

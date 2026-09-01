@@ -13,7 +13,6 @@ import {
   getAngularDifference,
 } from "./math";
 import { approximateCurveLength } from "./pathTraversal";
-import { makeLineId } from "./ids";
 
 /**
  * Calculate time for a motion profile (trapezoidal or triangular)
@@ -72,15 +71,12 @@ export function calculatePathTime(
 
   // Create map and default sequence
   const lineById = new Map<string, Line>();
-  lines.forEach((ln) => {
-    if (!ln.id) ln.id = makeLineId();
-    lineById.set(ln.id, ln);
-  });
+  lines.forEach((ln) => lineById.set(ln.id, ln));
 
   const seq: SequenceItem[] =
     sequence && sequence.length
       ? sequence
-      : lines.map((ln) => ({ kind: "path", lineId: ln.id! }));
+      : lines.map((ln) => ({ kind: "path", lineId: ln.id }));
 
   let lastPoint: Point = startPoint;
 
@@ -150,13 +146,12 @@ export function calculatePathTime(
       segmentTime = length / avgVelocity;
     }
     segmentTimes.push(segmentTime);
-    const lineIndex = lines.findIndex((l) => l.id === line.id);
     timeline.push({
       type: "travel",
       duration: segmentTime,
       startTime: currentTime,
       endTime: currentTime + segmentTime,
-      lineIndex,
+      lineId: line.id,
     });
     currentTime += segmentTime;
     currentHeading = getLineEndHeading(line, prevPoint);

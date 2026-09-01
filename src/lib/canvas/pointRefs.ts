@@ -1,101 +1,79 @@
-import type { BasePoint, Line, Point, Shape, StartPose } from "../../types";
+import type { BasePoint } from "../../types";
 import { FIELD_SIZE } from "../../config/defaults";
 
 /** Which state container a dragged point lives in, so callers know what to reassign. */
 export type PointContainer = "shapes" | "second" | "additional" | "main";
 
-export interface PointRefContext {
-  startPoint: StartPose;
-  lines: Line[];
-  secondStartPoint: StartPose | null;
-  secondLines: Line[];
-  additionalPaths: { startPoint: StartPose | null; lines: Line[] }[];
-  shapes: Shape[];
-  obstaclesEnabled: boolean;
-}
-
 export interface PointRef {
-  /** Live reference into the state container, so writes mutate in place. */
   point: BasePoint;
   container: PointContainer;
   locked: boolean;
-}
-
-function pointInLines(
-  lines: Line[],
-  // Only the coordinates and lock state are needed here, so any point will do.
-  startPoint: BasePoint | null,
-  lineIndex: number,
-  pointIndex: number,
-): { point: BasePoint; locked: boolean } | null {
-  if (lineIndex === -1) {
-    if (!startPoint) return null;
-    return { point: startPoint, locked: Boolean(startPoint.locked) };
-  }
-
-  const line = lines[lineIndex];
-  if (!line) return null;
-
-  if (pointIndex === 0) {
-    if (!line.endPoint) return null;
-    return { point: line.endPoint, locked: false };
-  }
-
-  const controlPoint = line.controlPoints[pointIndex - 1];
-  if (!controlPoint) return null;
-  return { point: controlPoint, locked: Boolean(line.locked) };
+  key: string;
+  /**
+   * Which path within its container this point belongs to. Only meaningful for
+   * additional paths, where it is the path's index.
+   */
+  scope: string;
+  /** Owning segment, or null for a path's start point or an obstacle vertex. */
+  lineId: string | null;
+  /** 0 is the segment's end point, n its nth control point; -1 for a start point. */
+  pointIndex: number;
 }
 
 /**
- * Map a Two.js element id back to the point it represents. Both the drag-read
- * (mousedown, for the grab offset) and the drag-write (mousemove) paths use
- * this so their index parsing cannot drift apart.
+ * Maps rendered elements back to the points they draw.
  */
-export function resolvePointRef(
-  elemId: string,
-  ctx: PointRefContext,
-): PointRef | null {
-  const parts = elemId.split("-");
+export class PointRegistry {
+  private byElementId = new Map<string, PointRef>();
+  private elementIdByKey = new Map<string, string>();
 
-  if (ctx.obstaclesEnabled && elemId.startsWith("obstacle-")) {
-    const vertex = ctx.shapes[Number(parts[1])]?.vertices[Number(parts[2])];
-    if (!vertex) return null;
-    return { point: vertex, container: "shapes", locked: false };
+  register(elementId: string, ref: PointRef): void {
+    this.byElementId.set(elementId, ref);
+    // The first registration for a key is the point's own element; later ones
+    // are its decorations, which are not what a reverse lookup wants.
+    if (!this.elementIdByKey.has(ref.key)) {
+      this.elementIdByKey.set(ref.key, elementId);
+    }
   }
 
-  if (elemId.startsWith("second-point-")) {
-    const resolved = pointInLines(
-      ctx.secondLines,
-      ctx.secondStartPoint,
-      Number(parts[2]) - 1,
-      Number(parts[3]),
-    );
-    if (!resolved) return null;
-    return { ...resolved, container: "second" };
+  resolve(elementId: string | null | undefined): PointRef | null {
+    if (!elementId) return null;
+    return this.byElementId.get(elementId) ?? null;
   }
 
-  if (elemId.startsWith("additional-path-")) {
-    const pathData = ctx.additionalPaths[Number(parts[2])];
-    if (!pathData) return null;
-    const resolved = pointInLines(
-      pathData.lines,
-      pathData.startPoint,
-      Number(parts[4]) - 1,
-      Number(parts[5]),
-    );
-    if (!resolved) return null;
-    // Additional paths ignore the locked flag, matching their rendering.
-    return { point: resolved.point, container: "additional", locked: false };
+  elementIdFor(key: string): string | null {
+    return this.elementIdByKey.get(key) ?? null;
   }
 
-  const resolved = pointInLines(
-    ctx.lines,
-    ctx.startPoint,
-    Number(parts[1]) - 1,
-    Number(parts[2]),
-  );
-  if (!resolved) return null;
-  return { ...resolved, container: "main" };
+  registerSegment(
+    elementId: string,
+    lineId: string,
+    container: PointContainer,
+  ): void {
+    this.segmentByElementId.set(elementId, { lineId, container });
+  }
+
+  segmentAt(
+    elementId: string | null | undefined,
+  ): { lineId: string; container: PointContainer } | null {
+    if (!elementId) return null;
+    return this.segmentByElementId.get(elementId) ?? null;
+  }
+
+  private segmentByElementId = new Map<
+    string,
+    { lineId: string; container: PointContainer }
+  >();
+}
+
+/** Address of a point on a path, used as its registry key. */
+export function pointKey(
+  container: PointContainer,
+  scope: string,
+  lineId: string | null,
+  pointIndex: number,
+): string {
+  return `${container}|${scope}|${lineId ?? "start"}|${pointIndex}`;
 }
 
 export interface GridSnapOptions {

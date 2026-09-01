@@ -27,7 +27,7 @@
     startPoint: StartPose;
     lines: Line[];
     sequence: SequenceItem[];
-    selectedLineIndex?: number;
+    selectedLineId?: string | null;
     selectedPointIndex?: number;
     robotXY: BasePoint;
     robotHeading: number;
@@ -48,7 +48,7 @@
     startPoint = $bindable(),
     lines = $bindable(),
     sequence = $bindable(),
-    selectedLineIndex = $bindable(0),
+    selectedLineId = $bindable(null),
     selectedPointIndex = $bindable(0),
     robotXY,
     robotHeading,
@@ -65,12 +65,14 @@
   let obstaclesOpen = $state(true);
 
   let selectedLine: Line | null = $derived(
-    lines[selectedLineIndex] || lines[0] || null,
+    lines.find((line) => line.id === selectedLineId) || lines[0] || null,
   );
-  let selectedLinePathIndex = $derived.by(() => {
-    const line = selectedLine;
-    return line ? lines.findIndex((candidate) => candidate.id === line.id) : -1;
-  });
+  let selectedLineIndex = $derived(
+    selectedLine
+      ? lines.findIndex((candidate) => candidate.id === selectedLine!.id)
+      : -1,
+  );
+  let selectedLinePathIndex = $derived(selectedLineIndex);
   let selectedPoint: BasePoint | null = $derived.by(() => {
     const line = selectedLine;
     if (!line) return null;
@@ -126,13 +128,12 @@
         return _markers;
 
       timePrediction.timeline.forEach((ev) => {
-        if ((ev as any).type === "travel") {
-          const end = (ev as any).endTime as number;
-          const pct = (end / timePrediction.totalTime) * 100;
-          const lineIndex = (ev as any).lineIndex as number;
-          const line = lines[lineIndex];
+        if (ev.type === "travel") {
+          const pct = (ev.endTime / timePrediction.totalTime) * 100;
+          const index = lines.findIndex((line) => line.id === ev.lineId);
+          const line = lines[index];
           const color = line?.color || "#ffffff";
-          const name = line?.name || `Path ${lineIndex + 1}`;
+          const name = line?.name || `Path ${index + 1}`;
           _markers.push({ percent: pct, color, name });
         }
       });
@@ -226,11 +227,11 @@
     if (!selectedLine) return;
     if (lines.length <= 1) return;
 
-    removeLine(selectedLineIndex);
-    selectedLineIndex = Math.max(
-      0,
-      Math.min(selectedLineIndex, lines.length - 1),
-    );
+    // Select whatever now occupies the deleted segment's slot, or the last one.
+    const removedIndex = selectedLineIndex;
+    removeLine(removedIndex);
+    selectedLineId =
+      lines[Math.min(removedIndex, lines.length - 1)]?.id ?? null;
     selectedPointIndex = 0;
     recordChange();
   }

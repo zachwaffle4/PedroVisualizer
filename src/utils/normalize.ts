@@ -32,7 +32,9 @@ interface LegacyHeadingFields {
 type LegacyPoint = Point & LegacyHeadingFields;
 
 /** A line as it may appear in a file: heading either on the line or the endpoint. */
-export type StoredLine = Omit<Line, "heading" | "endPoint"> & {
+export type StoredLine = Omit<Line, "heading" | "endPoint" | "id"> & {
+  /** Absent in files written before segments carried ids. */
+  id?: string;
   heading?: Heading | HeadingType;
   endPoint: LegacyPoint;
 };
@@ -158,6 +160,6 @@ export function deriveSequence(
 
   return normalizedLines.map((ln) => ({
     kind: "path",
-    lineId: ln.id!,
+    lineId: ln.id,
   }));
 }

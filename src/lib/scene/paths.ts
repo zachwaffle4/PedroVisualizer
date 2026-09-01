@@ -7,6 +7,7 @@ import {
   CURVE_SAMPLES,
   flattenToAtomicSegments,
 } from "../../utils/pathTraversal";
+import type { PointContainer, PointRegistry } from "../canvas/pointRefs";
 import { LINE_WIDTH } from "../../config/defaults";
 import type { PathRenderSpec, SceneScales } from "./types";
 
@@ -86,6 +87,8 @@ export function buildPathElements(
   spec: PathRenderSpec,
   scales: SceneScales,
   settings: Settings,
+  registry?: PointRegistry,
+  container: PointContainer = "main",
 ): (Path | PathLine)[] {
   const { startPoint, lines, idPrefix, color, honorLocked = true } = spec;
   const opacityScale = spec.opacityScale ?? 1;
@@ -97,6 +100,7 @@ export function buildPathElements(
       const lineElem = buildSegmentPath(segmentStart, line, scales);
 
       lineElem.id = `${idPrefix}-${idx + 1}`;
+      registry?.registerSegment(lineElem.id, line.id, container);
       lineElem.stroke = color || line.color;
       lineElem.linewidth = scales.x(LINE_WIDTH);
       lineElem.noFill();

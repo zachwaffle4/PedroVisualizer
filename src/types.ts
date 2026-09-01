@@ -57,7 +57,7 @@ export interface WaitSegment {
 }
 
 export interface Line {
-  id?: string;
+  id: string;
   endPoint: Point;
   controlPoints: ControlPoint[];
   heading: Heading;
@@ -152,7 +152,7 @@ export interface TimelineEvent {
   endTime: number;
   name?: string;
   waitPosition?: "before" | "after";
-  lineIndex?: number; // for travel
+  lineId?: string; // for travel
   startHeading?: number;
   targetHeading?: number;
   atPoint?: BasePoint;

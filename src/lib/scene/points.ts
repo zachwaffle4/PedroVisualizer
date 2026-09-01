@@ -1,6 +1,11 @@
 import Two from "two.js";
 import type { BasePoint, Line, Shape } from "../../types";
 import { POINT_RADIUS } from "../../config/defaults";
+import {
+  pointKey,
+  type PointContainer,
+  type PointRegistry,
+} from "../canvas/pointRefs";
 import type { SceneScales } from "./types";
 
 const LABEL_FAMILY = "ui-sans-serif, system-ui, sans-serif";
@@ -8,7 +13,7 @@ const SELECTED_LINE_STROKE = "#facc15";
 const SELECTED_POINT_STROKE = "#f59e0b";
 
 export interface PointSelection {
-  lineIndex: number;
+  lineId: string | null;
   pointIndex: number;
 }
 
@@ -19,6 +24,12 @@ export interface PointMarkerOptions {
   textSize?: number;
   opacity?: number;
   selection?: PointSelection | null;
+  /** Records what was drawn, so hits can be resolved without parsing ids. */
+  registry?: PointRegistry;
+  /** Which state array these points live in; required when registering. */
+  container?: PointContainer;
+  /** Distinguishes registry keys between paths rendered side by side. */
+  scope?: string;
 }
 
 function circle(
@@ -79,25 +90,58 @@ export function buildPathPointMarkers(
     textSize = 1.55,
     opacity,
     selection = null,
+    registry,
+    container = "main",
+    scope = idPrefix,
   } = options;
 
   const radius = POINT_RADIUS * radiusScale;
   const elements: any[] = [];
+
+  /**
+   * Record an element against the point it draws. Decorations register too, so
+   * a hit on a label or halo resolves the same as a hit on the dot.
+   */
+  const record = (
+    elementId: string,
+    point: BasePoint,
+    lineId: string | null,
+    pointIndex: number,
+    locked: boolean,
+  ) => {
+    registry?.register(elementId, {
+      point,
+      container,
+      // Additional paths render read-only, matching how they are drawn.
+      locked: container === "additional" ? false : locked,
+      key: pointKey(container, scope, lineId, pointIndex),
+      scope,
+      lineId,
+      pointIndex,
+    });
+  };
 
   const startElem = circle(startPoint, radius, scales);
   startElem.id = `${idPrefix}-0-0`;
   startElem.fill = color || lines[0]?.color || "#888";
   startElem.noStroke();
   if (opacity !== undefined) startElem.opacity = opacity;
+  record(startElem.id, startPoint, null, -1, Boolean(startPoint.locked));
   elements.push(startElem);
 
   lines.forEach((line, idx) => {
     if (!line || !line.endPoint) return;
-    const isSelectedLine = selection?.lineIndex === idx;
+    const isSelectedLine = selection?.lineId === line.id;
 
     [line.endPoint, ...line.controlPoints].forEach((point, idx1) => {
       const baseId = `${idPrefix}-${idx + 1}-${idx1}`;
       const fill = color || line.color;
+      // A point is locked if its segment is locked or it is locked itself.
+      const locked = Boolean(line.locked) || Boolean(point.locked);
+      record(baseId, point, line.id, idx1, locked);
+      for (const suffix of ["-background", "-text", "-highlight"]) {
+        record(`${baseId}${suffix}`, point, line.id, idx1, locked);
+      }
 
       if (idx1 > 0) {
         const group = new Two.Group();
@@ -167,7 +211,7 @@ export function buildSelectedPointRing(
   selection: PointSelection,
   scales: SceneScales,
 ): any[] {
-  const selectedLine = lines[selection.lineIndex];
+  const selectedLine = lines.find((line) => line.id === selection.lineId);
   const selectedPoint =
     selectedLine && selection.pointIndex >= 0
       ? selection.pointIndex === 0
@@ -178,7 +222,7 @@ export function buildSelectedPointRing(
   if (!selectedLine || !selectedPoint) return [];
 
   const ring = circle(selectedPoint, POINT_RADIUS * 1.7, scales);
-  ring.id = `selected-point-${selection.lineIndex}-${selection.pointIndex}`;
+  ring.id = `selected-point-${selection.lineId}-${selection.pointIndex}`;
   ring.fill = "transparent";
   ring.stroke = SELECTED_LINE_STROKE;
   ring.linewidth = scales.x(0.35);
@@ -190,12 +234,26 @@ export function buildSelectedPointRing(
 export function buildObstacleVertexMarkers(
   shapes: Shape[],
   scales: SceneScales,
+  registry?: PointRegistry,
 ): any[] {
   return shapes.flatMap((shape, shapeIdx) =>
     shape.vertices.map((vertex, vertexIdx) => {
       const id = `obstacle-${shapeIdx}-${vertexIdx}`;
       const group = new Two.Group();
       group.id = id;
+
+      const ref = {
+        point: vertex,
+        container: "shapes" as const,
+        locked: false,
+        key: pointKey("shapes", shape.id, null, vertexIdx),
+        scope: shape.id,
+        lineId: null,
+        pointIndex: vertexIdx,
+      };
+      registry?.register(id, ref);
+      registry?.register(`${id}-background`, ref);
+      registry?.register(`${id}-text`, ref);
 
       const pointElem = circle(vertex, POINT_RADIUS, scales);
       pointElem.id = `${id}-background`;
