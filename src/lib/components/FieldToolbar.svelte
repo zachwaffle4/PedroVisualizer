@@ -1,6 +1,7 @@
 <script lang="ts">
   import PlayIcon from "./icons/PlayIcon.svelte";
   import PauseIcon from "./icons/PauseIcon.svelte";
+  import PenIcon from "./icons/PenIcon.svelte";
 
   interface Props {
     playing?: boolean;
@@ -27,13 +28,6 @@
 
 <div class="center-toolbar">
   <button class="toolbar-btn" onclick={onAddPath}>+ Add Path</button>
-  <button
-    class="toolbar-btn"
-    class:toolbar-btn--blue={penToolEnabled}
-    onclick={onTogglePenTool}
-  >
-    {penToolEnabled ? "Pen Tool On" : "Pen Tool"}
-  </button>
   <button class="toolbar-btn" onclick={onAddControlPoint}
     >+ Control Point</button
   >
@@ -45,6 +39,17 @@
     onclick={onCreatePathToLastPoint}
   >
     Create Path to Last Point
+  </button>
+  <!-- The pen tool sits at the end of the tool list, shown as an icon. -->
+  <button
+    class="toolbar-btn toolbar-btn--icon"
+    class:toolbar-btn--blue={penToolEnabled}
+    aria-pressed={penToolEnabled}
+    title={penToolEnabled ? "Pen Tool (on)" : "Pen Tool"}
+    aria-label={penToolEnabled ? "Disable pen tool" : "Enable pen tool"}
+    onclick={onTogglePenTool}
+  >
+    <PenIcon className="size-5" strokeWidth={2} />
   </button>
   <div style="flex: 1;"></div>
   <button

@@ -59,6 +59,10 @@
     optimizingAll?: boolean;
     twoElement?: HTMLDivElement | null;
     exportPathAsGif: () => Promise<void>;
+    leftPanelHidden?: boolean;
+    rightPanelHidden?: boolean;
+    onToggleLeftPanel?: () => void;
+    onToggleRightPanel?: () => void;
   }
 
   let {
@@ -85,6 +89,10 @@
     optimizingAll = false,
     twoElement = null,
     exportPathAsGif,
+    leftPanelHidden = false,
+    rightPanelHidden = false,
+    onToggleLeftPanel = () => {},
+    onToggleRightPanel = () => {},
   }: Props = $props();
 
   let fileManagerOpen = $state(false);
@@ -441,6 +449,67 @@
     <NavDivider />
 
     <ViewToggles {selectedGridSize} onCycleGridSize={cycleGridSize} />
+    <NavDivider />
+
+    <!-- Sidebar visibility toggles -->
+    <div class="flex items-center gap-1">
+      <button
+        title={leftPanelHidden ? "Show left sidebar" : "Hide left sidebar"}
+        aria-label={leftPanelHidden ? "Show left sidebar" : "Hide left sidebar"}
+        aria-pressed={!leftPanelHidden}
+        onclick={onToggleLeftPanel}
+        class="console-icon-button"
+        class:text-blue-500={!leftPanelHidden}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+          <line x1="9" y1="4" x2="9" y2="20"></line>
+          {#if !leftPanelHidden}
+            <line x1="5" y1="8" x2="7" y2="8"></line>
+            <line x1="5" y1="12" x2="7" y2="12"></line>
+          {/if}
+        </svg>
+      </button>
+      <button
+        title={rightPanelHidden ? "Show right sidebar" : "Hide right sidebar"}
+        aria-label={rightPanelHidden
+          ? "Show right sidebar"
+          : "Hide right sidebar"}
+        aria-pressed={!rightPanelHidden}
+        onclick={onToggleRightPanel}
+        class="console-icon-button"
+        class:text-blue-500={!rightPanelHidden}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+          <line x1="15" y1="4" x2="15" y2="20"></line>
+          {#if !rightPanelHidden}
+            <line x1="17" y1="8" x2="19" y2="8"></line>
+            <line x1="17" y1="12" x2="19" y2="12"></line>
+          {/if}
+        </svg>
+      </button>
+    </div>
     <NavDivider />
 
     <!-- Multiple Paths Toggle -->

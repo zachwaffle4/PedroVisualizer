@@ -133,9 +133,24 @@
   }
 
   function toggleSelectedPointLock() {
-    if (!selectedPoint) return;
-    selectedPoint.locked = !selectedPoint.locked;
-    lines = [...lines];
+    const line = selectedLine;
+    if (!line || !selectedPoint) return;
+
+    const pointIndex = selectedPointIndex;
+    // Rebuild the point rather than mutating in place: the inspector reads the
+    // lock state off the line, so it has to see a fresh object to update.
+    lines = replaceSegment(lines, line.id, (segment) => {
+      if (pointIndex === 0) {
+        return {
+          ...segment,
+          endPoint: { ...segment.endPoint, locked: !segment.endPoint.locked },
+        };
+      }
+      const controlPoints = segment.controlPoints.map((point, index) =>
+        index === pointIndex - 1 ? { ...point, locked: !point.locked } : point,
+      );
+      return { ...segment, controlPoints };
+    });
     recordChange?.();
   }
 

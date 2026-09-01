@@ -38,5 +38,8 @@ export {
   ungroupPath,
   replaceSegment,
   updatePath,
+  movePath,
+  pathContains,
+  reorderSequenceToMatch,
 } from "./pathTraversal";
 export type { FlatSegment } from "./pathTraversal";

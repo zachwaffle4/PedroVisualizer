@@ -55,10 +55,10 @@
     snapPointToGrid,
   } from "./lib/canvas/pointRefs";
   import {
-    SIDE_PANEL_MIN_WIDTH,
     PANEL_DIVIDER_WIDTH,
     clampPanelWidth,
     getCenterWidth,
+    getLeftPanelMinWidth,
     getMinCenterWidthForSquare,
     getRightPanelMinWidth,
     getTotalAvailableWidth,
@@ -119,6 +119,8 @@
     groupPaths,
     groupingProblem,
     ungroupPath,
+    movePath,
+    reorderSequenceToMatch,
   } from "./utils";
   import {
     POINT_RADIUS,
@@ -361,7 +363,7 @@
     const startAnchor = selectedLine?.endPoint || undefined;
     const fitted = fitStrokeToLines(
       penStroke,
-      Number(settings?.penToolAccuracy ?? DEFAULT_SETTINGS.penToolAccuracy),
+      Number(settings?.penToolMaxPaths ?? DEFAULT_SETTINGS.penToolMaxPaths),
       startAnchor,
     );
     penStroke = [];
@@ -369,8 +371,8 @@
 
     if (!fitted) return;
 
-    const newLine = fitted.lines[0];
-    if (!newLine) return;
+    const newLines = fitted.lines;
+    if (newLines.length === 0) return;
 
     if (selectedLine?.id) {
       const insertAt = lines.findIndex((line) => line.id === selectedLine.id);
@@ -378,7 +380,7 @@
       nextLines.splice(
         insertAt >= 0 ? insertAt + 1 : nextLines.length,
         0,
-        newLine,
+        ...newLines,
       );
       lines = normalizePaths(nextLines);
 
@@ -389,15 +391,18 @@
       nextSequence.splice(
         seqIndex >= 0 ? seqIndex + 1 : nextSequence.length,
         0,
-        { kind: "path", lineId: newLine.id },
+        ...newLines.map((line) => ({
+          kind: "path" as const,
+          lineId: line.id,
+        })),
       );
       sequence = nextSequence;
 
-      selectedPathIds = [newLine.id];
+      selectedPathIds = [newLines[newLines.length - 1].id];
       selectedPointIndex = 0;
     } else {
       startPoint = fitted.startPoint;
-      lines = normalizePaths(fitted.lines);
+      lines = normalizePaths(newLines);
       sequence = atomicSegments(lines).map((line) => ({
         kind: "path",
         lineId: line.id,
@@ -470,7 +475,10 @@
       );
       settings.leftPanelWidth = leftPanelWidth;
     } else {
-      const otherWidth = leftPanelHidden ? 0 : leftPanelWidth;
+      const leftPanelMinWidth = getLeftPanelMinWidth(settings);
+      const otherWidth = leftPanelHidden
+        ? 0
+        : Math.max(leftPanelWidth, leftPanelMinWidth);
       const desiredWidth =
         panelResizeState.startWidth - (event.clientX - panelResizeState.startX);
       rightPanelHidden = false;
@@ -483,6 +491,20 @@
       );
       settings.rightPanelWidth = rightPanelWidth;
     }
+  }
+
+  /** Drag-and-drop reordering from the Path List. */
+  function reorderPath(
+    draggedId: string,
+    targetId: string,
+    position: "before" | "after",
+  ) {
+    const next = movePath(lines, draggedId, targetId, position);
+    if (next === lines) return;
+    lines = next;
+    // Playback follows the sequence, so it has to track the new order.
+    sequence = reorderSequenceToMatch(lines, sequence);
+    recordChange();
   }
 
   function toggleLeftPanelVisibility() {
@@ -732,7 +754,10 @@
       otherForLeft,
       settings,
     );
-    const otherForRight = leftPanelHidden ? 0 : leftPanelWidth;
+    const leftPanelMinWidth = getLeftPanelMinWidth(settings);
+    const otherForRight = leftPanelHidden
+      ? 0
+      : Math.max(leftPanelWidth, leftPanelMinWidth);
     rightPanelWidth = clampPanelWidth(
       "right",
       rightPanelWidth,
@@ -1980,16 +2005,14 @@
     const availableForPanels =
       getTotalAvailableWidth() - getMinCenterWidthForSquare();
     const rightMinWidth = getRightPanelMinWidth(settings);
+    const leftMinWidth = getLeftPanelMinWidth(settings);
 
     if (!leftPanelHidden) {
       const rightWidth = rightPanelHidden
         ? 0
         : Math.max(rightPanelWidth, rightMinWidth);
-      const maxLeft = Math.max(
-        SIDE_PANEL_MIN_WIDTH,
-        availableForPanels - rightWidth,
-      );
-      const nextLeft = clamp(leftPanelWidth, SIDE_PANEL_MIN_WIDTH, maxLeft);
+      const maxLeft = Math.max(leftMinWidth, availableForPanels - rightWidth);
+      const nextLeft = clamp(leftPanelWidth, leftMinWidth, maxLeft);
       if (nextLeft !== leftPanelWidth) leftPanelWidth = nextLeft;
     }
 
@@ -2622,6 +2645,10 @@
     {optimizingAll}
     {twoElement}
     {exportPathAsGif}
+    {leftPanelHidden}
+    {rightPanelHidden}
+    onToggleLeftPanel={toggleLeftPanelVisibility}
+    onToggleRightPanel={toggleRightPanelVisibility}
   />
 
   <SaveDialog
@@ -2648,7 +2675,7 @@
   <div class="ui-shell w-screen h-screen pt-[5.1rem] px-3 pb-3">
     <div
       class="desktop-grid h-full"
-      style={`--left-panel-width: ${leftPanelHidden ? "0px" : `${leftPanelWidth}px`}; --right-panel-width: ${rightPanelHidden ? "0px" : `${rightPanelWidth}px`}; --center-width: ${centerWidth}px;`}
+      style={`--left-panel-width: ${leftPanelHidden ? "0px" : `${leftPanelWidth}px`}; --right-panel-width: ${rightPanelHidden ? "0px" : `${rightPanelWidth}px`}; --left-divider-width: ${leftPanelHidden ? "0px" : "18px"}; --right-divider-width: ${rightPanelHidden ? "0px" : "18px"}; --center-width: ${centerWidth}px;`}
     >
       <LeftRail
         hidden={leftPanelHidden}
@@ -2668,6 +2695,7 @@
         }}
         onGroup={groupSelectedPaths}
         onUngroup={ungroupSelectedPath}
+        onReorderPath={reorderPath}
       />
 
       <PanelDivider

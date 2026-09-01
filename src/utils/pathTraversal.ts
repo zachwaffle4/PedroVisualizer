@@ -363,3 +363,86 @@ export function replaceSegment(
   const next = walk(paths);
   return changed ? next : paths;
 }
+
+/** True when `ancestorId` is (or contains) `id`, at any depth. */
+export function pathContains(
+  paths: Path[],
+  ancestorId: string,
+  id: string,
+): boolean {
+  const ancestor = findPathById(paths, ancestorId);
+  if (!ancestor) return false;
+  if (ancestor.id === id) return true;
+  if (ancestor.kind !== "compound") return false;
+  return findPathById(ancestor.segments, id) !== null;
+}
+
+/**
+ * Move `draggedId` so it sits directly before or after `targetId`.
+ *
+ * The dragged path is removed from wherever it currently lives and re-inserted
+ * next to the target, which may be in a different group. Dropping a group onto
+ * one of its own descendants is a no-op, as is dropping a path onto itself.
+ */
+export function movePath(
+  paths: Path[],
+  draggedId: string,
+  targetId: string,
+  position: "before" | "after" = "before",
+): Path[] {
+  if (draggedId === targetId) return paths;
+  if (!findPathById(paths, draggedId)) return paths;
+  if (!findPathById(paths, targetId)) return paths;
+  // Moving a group inside itself would detach the whole subtree.
+  if (pathContains(paths, draggedId, targetId)) return paths;
+
+  const dragged = findPathById(paths, draggedId)!;
+
+  const remove = (nodes: Path[]): Path[] =>
+    nodes
+      .filter((node) => node.id !== draggedId)
+      .map((node) =>
+        node.kind === "compound"
+          ? { ...node, segments: remove(node.segments) }
+          : node,
+      );
+
+  const insert = (nodes: Path[]): Path[] => {
+    const index = nodes.findIndex((node) => node.id === targetId);
+    if (index >= 0) {
+      const next = [...nodes];
+      next.splice(position === "before" ? index : index + 1, 0, dragged);
+      return next;
+    }
+    return nodes.map((node) =>
+      node.kind === "compound"
+        ? { ...node, segments: insert(node.segments) }
+        : node,
+    );
+  };
+
+  return insert(remove(paths));
+}
+
+/**
+ * Re-order the path entries of a sequence so they follow the order the
+ * segments now appear in, leaving wait entries in their existing slots.
+ */
+export function reorderSequenceToMatch<
+  T extends { kind: string; lineId?: string },
+>(paths: Path[], sequence: T[]): T[] {
+  const order = atomicSegments(paths).map((segment) => segment.id);
+  const byId = new Map<string, T>();
+  for (const item of sequence) {
+    if (item.kind === "path" && item.lineId) byId.set(item.lineId, item);
+  }
+
+  const ordered = order
+    .map((id) => byId.get(id))
+    .filter((item): item is T => Boolean(item));
+
+  let cursor = 0;
+  return sequence.map((item) =>
+    item.kind === "path" ? (ordered[cursor++] ?? item) : item,
+  );
+}

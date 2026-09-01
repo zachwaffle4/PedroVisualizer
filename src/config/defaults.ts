@@ -53,8 +53,9 @@ export const DEFAULT_SETTINGS: Settings = {
   headingArrowColor: "#ffffff",
   headingArrowThickness: 2,
   pathOpacity: 1,
+  leftPanelMinWidth: 0,
   rightPanelMinWidth: 0,
-  penToolAccuracy: 8,
+  penToolMaxPaths: 8,
   experimentalFeatures: {
     optimize: false,
     curveThrough: false,

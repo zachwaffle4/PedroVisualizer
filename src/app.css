@@ -371,8 +371,11 @@ body {
      The rails use minmax(0, …) so a window too narrow for their saved widths
      shrinks them instead of overflowing the shell. */
   grid-template-columns:
-    minmax(0, var(--left-panel-width, 330px)) 18px minmax(0, 1fr)
-    18px minmax(0, var(--right-panel-width, 360px));
+    minmax(0, var(--left-panel-width, 330px))
+    var(--left-divider-width, 18px)
+    minmax(0, 1fr)
+    var(--right-divider-width, 18px)
+    minmax(0, var(--right-panel-width, 360px));
   gap: 0;
   align-items: stretch;
 }
@@ -393,6 +396,11 @@ body {
   overflow: hidden;
 }
 
+/* The left rail hugs the window edge: no padding on its outer side. */
+.side-rail-left {
+  padding-left: 0;
+}
+
 .side-rail--collapsed {
   padding: 0;
   border-width: 0;
@@ -405,6 +413,11 @@ body {
   align-items: stretch;
   justify-content: center;
   padding: 0 4px;
+}
+
+.panel-divider--hidden {
+  padding: 0;
+  overflow: hidden;
 }
 
 .panel-divider-grip {
@@ -656,6 +669,19 @@ body {
   margin-left: 4px;
 }
 
+/* Drag-and-drop reordering in the Path List. */
+.path-row--dragging {
+  opacity: 0.45;
+}
+
+.path-row--drop-before {
+  box-shadow: inset 0 2px 0 0 #8d68bd;
+}
+
+.path-row--drop-after {
+  box-shadow: inset 0 -2px 0 0 #8d68bd;
+}
+
 .chain-swatch {
   width: 14px;
   height: 14px;
@@ -781,6 +807,19 @@ body {
   border-color: #8d68bd;
   background: #222222;
   box-shadow: inset 0 0 0 1px rgba(141, 104, 189, 0.24);
+}
+
+/* Drag-and-drop reordering in the Path List. */
+.path-row--dragging {
+  opacity: 0.45;
+}
+
+.path-row--drop-before {
+  box-shadow: inset 0 2px 0 0 #8d68bd;
+}
+
+.path-row--drop-after {
+  box-shadow: inset 0 -2px 0 0 #8d68bd;
 }
 
 .chain-swatch {

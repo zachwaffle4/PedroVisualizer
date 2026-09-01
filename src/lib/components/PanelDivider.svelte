@@ -9,27 +9,26 @@
   let { side, hidden = false, onResizeStart, onRestore }: Props = $props();
 
   let label = $derived(side === "left" ? "left" : "right");
-  // The chevron points toward the direction the panel would reappear from.
-  let collapsedGlyph = $derived(side === "left" ? "›" : "‹");
 </script>
 
-<div class="panel-divider panel-divider--{side}">
-  <button
-    class="panel-divider-grip"
-    type="button"
-    aria-label="Resize {label} panel"
-    title={hidden
-      ? `Click to restore the ${label} panel`
-      : `Drag to resize the ${label} panel`}
-    onmousedown={(event) => onResizeStart(side, event)}
-    onclick={() => {
-      if (hidden) onRestore();
-    }}
-  >
-    {#if hidden}
-      {collapsedGlyph}
-    {:else}
+<!-- A hidden sidebar collapses its divider to zero width too, so the centre
+     stage gets the space back. The navbar toggle brings the sidebar back. -->
+<div
+  class="panel-divider panel-divider--{side}"
+  class:panel-divider--hidden={hidden}
+>
+  {#if !hidden}
+    <button
+      class="panel-divider-grip"
+      type="button"
+      aria-label="Resize {label} panel"
+      title="Drag to resize the {label} panel"
+      onmousedown={(event) => onResizeStart(side, event)}
+      onclick={() => {
+        if (hidden) onRestore();
+      }}
+    >
       <span class="panel-divider-line"></span>
-    {/if}
-  </button>
+    </button>
+  {/if}
 </div>

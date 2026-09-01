@@ -6,3 +6,4 @@ export { default as TrashIcon } from "./TrashIcon.svelte";
 export { default as PlayIcon } from "./PlayIcon.svelte";
 export { default as PauseIcon } from "./PauseIcon.svelte";
 export { default as SpinnerIcon } from "./SpinnerIcon.svelte";
+export { default as PenIcon } from "./PenIcon.svelte";

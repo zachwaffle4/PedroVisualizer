@@ -28,7 +28,14 @@
     onToggleLock,
   }: Props = $props();
 
-  let disabled = $derived(selectedLine.locked || Boolean(selectedPoint.locked));
+  // Read the lock off the line so it tracks edits made through `lines`.
+  let livePoint = $derived(
+    selectedPointIndex === 0
+      ? selectedLine.endPoint
+      : (selectedLine.controlPoints[selectedPointIndex - 1] ?? selectedPoint),
+  );
+  let isPointLocked = $derived(Boolean(livePoint?.locked));
+  let disabled = $derived(selectedLine.locked || isPointLocked);
   let coordinateStep = $derived($snapToGrid && $showGrid ? $gridSize : 0.1);
 
   const FIELD_CLASS =
@@ -43,7 +50,17 @@
   <div class="flex items-center justify-between gap-2">
     <div>
       <div class="text-gray-500">Selected Point</div>
-      <div class="font-medium text-gray-100">{selectedPointLabel}</div>
+      <div class="flex items-center gap-2">
+        <span class="font-medium text-gray-100">{selectedPointLabel}</span>
+        <!-- Status box reflecting this point's own lock state. -->
+        <span
+          class="rounded border px-1.5 py-0.5 text-[10px] font-semibold {isPointLocked
+            ? 'border-amber-600 bg-amber-950 text-amber-300'
+            : 'border-[#444444] bg-[#161616] text-gray-400'}"
+        >
+          {isPointLocked ? "Locked" : "Unlocked"}
+        </span>
+      </div>
     </div>
     <div class="flex flex-wrap gap-1">
       <button
@@ -112,13 +129,8 @@
   {/if}
 
   <div
-    class="mt-2 flex items-center justify-between gap-2 text-[11px] text-gray-300"
+    class="mt-2 flex items-center justify-end gap-2 text-[11px] text-gray-300"
   >
-    <div>
-      Locked: <span class="font-medium text-gray-100">
-        {selectedPoint.locked ? "Yes" : "No"}
-      </span>
-    </div>
     <div class="flex items-center gap-2">
       <button
         class={ACTION_CLASS}
@@ -137,7 +149,7 @@
         onclick={onToggleLock}
         disabled={selectedLine.locked}
       >
-        {selectedPoint.locked ? "Unlock Point" : "Lock Point"}
+        {isPointLocked ? "Unlock Point" : "Lock Point"}
       </button>
     </div>
   </div>

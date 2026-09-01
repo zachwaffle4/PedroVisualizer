@@ -255,6 +255,26 @@
 
           <div>
             <NumberField
+              id="left-panel-min-width"
+              label="Left Panel Minimum Width"
+              value={settings.leftPanelMinWidth ??
+                DEFAULT_SETTINGS.leftPanelMinWidth ??
+                0}
+              min={0}
+              max={600}
+              step={5}
+              suffix="px"
+              inputClass="console-input w-28 px-3 py-2"
+              onInput={(v) => handleNumberInput(v, "leftPanelMinWidth", 0, 600)}
+            />
+            <div class="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+              Prevents the left sidebar from being squished smaller than this.
+              Set to 0 for no limit.
+            </div>
+          </div>
+
+          <div>
+            <NumberField
               id="right-panel-min-width"
               label="Right Panel Minimum Width"
               value={settings.rightPanelMinWidth ??
@@ -361,21 +381,25 @@
           class="p-3 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700"
         >
           <NumberField
-            id="pen-tool-accuracy"
-            label="Pen Tool Accuracy"
-            value={settings.penToolAccuracy}
+            id="pen-tool-max-paths"
+            label="Pen Tool Maximum Paths"
+            value={settings.penToolMaxPaths ??
+              DEFAULT_SETTINGS.penToolMaxPaths ??
+              8}
             min={0}
+            max={200}
             step={1}
-            onInput={(v) => handleNumberInput(v, "penToolAccuracy", 0)}
+            onInput={(v) => handleNumberInput(v, "penToolMaxPaths", 0, 200)}
           />
           <div class="mt-2 flex items-center justify-between gap-2">
             <span class="text-xs text-neutral-500 dark:text-neutral-400">
-              Maximum control points used when fitting freehand strokes
+              Maximum number of paths a single pen stroke may create. Set to 0
+              for no limit.
             </span>
             <span
               class="text-sm font-medium text-neutral-700 dark:text-neutral-300 min-w-12 text-right"
             >
-              {settings.penToolAccuracy ?? 8}
+              {settings.penToolMaxPaths ?? 8}
             </span>
           </div>
         </div>

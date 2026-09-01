@@ -19,6 +19,12 @@
     ) => void;
     onGroup: () => void;
     onUngroup: () => void;
+    /** Move `draggedId` to sit before or after `targetId`. */
+    onReorderPath: (
+      draggedId: string,
+      targetId: string,
+      position: "before" | "after",
+    ) => void;
   }
 
   let {
@@ -35,10 +41,16 @@
     onSelectPath,
     onGroup,
     onUngroup,
+    onReorderPath,
   }: Props = $props();
 
   /** Groups the user has folded away, keyed by id. */
   let collapsed: Record<string, boolean> = $state({});
+
+  /** The row currently being dragged, and where it would land. */
+  let draggingId: string | null = $state(null);
+  let dropTargetId: string | null = $state(null);
+  let dropPosition: "before" | "after" = $state("before");
 
   function toggleGroup(id: string) {
     collapsed[id] = !collapsed[id];
@@ -50,16 +62,62 @@
       range: event.shiftKey,
     };
   }
+
+  function handleDragStart(event: DragEvent, id: string) {
+    draggingId = id;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      // Firefox requires data to be set for a drag to start at all.
+      event.dataTransfer.setData("text/plain", id);
+    }
+  }
+
+  function handleDragOver(event: DragEvent, id: string) {
+    if (!draggingId || draggingId === id) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+
+    // Drop above or below the hovered row depending on which half is over.
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    dropTargetId = id;
+    dropPosition =
+      event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+  }
+
+  function handleDrop(event: DragEvent, id: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    const source = draggingId;
+    const position = dropPosition;
+    resetDrag();
+    if (source && source !== id) onReorderPath(source, id, position);
+  }
+
+  function resetDrag() {
+    draggingId = null;
+    dropTargetId = null;
+  }
 </script>
 
 {#snippet row(item: PathListItem)}
   {@const isSelected = selectedPathIds.includes(item.id)}
   {@const isPrimary = primarySelectedId === item.id}
+  {@const isDropBefore = dropTargetId === item.id && dropPosition === "before"}
+  {@const isDropAfter = dropTargetId === item.id && dropPosition === "after"}
   {#if item.kind === "compound"}
     <div
       class="path-group"
       class:path-group--selected={isSelected}
       class:path-group--primary={isPrimary}
+      class:path-row--dragging={draggingId === item.id}
+      class:path-row--drop-before={isDropBefore}
+      class:path-row--drop-after={isDropAfter}
+      draggable="true"
+      role="listitem"
+      ondragstart={(event) => handleDragStart(event, item.id)}
+      ondragover={(event) => handleDragOver(event, item.id)}
+      ondrop={(event) => handleDrop(event, item.id)}
+      ondragend={resetDrag}
     >
       <div class="path-group-header">
         <button
@@ -96,6 +154,14 @@
       class="list-item-box compact text-left"
       class:list-item-box--selected={isSelected}
       class:list-item-box--primary={isPrimary}
+      class:path-row--dragging={draggingId === item.id}
+      class:path-row--drop-before={isDropBefore}
+      class:path-row--drop-after={isDropAfter}
+      draggable="true"
+      ondragstart={(event) => handleDragStart(event, item.id)}
+      ondragover={(event) => handleDragOver(event, item.id)}
+      ondrop={(event) => handleDrop(event, item.id)}
+      ondragend={resetDrag}
       onclick={(event) => onSelectPath(item.id, modifiersOf(event))}
     >
       <div class="list-item-top">
@@ -119,10 +185,10 @@
           class="panel-toggle-btn"
           type="button"
           onclick={onToggleVisibility}
-          aria-label={hidden ? "Show left panel" : "Hide left panel"}
-          title={hidden ? "Show left panel" : "Hide left panel"}
+          aria-label="Hide left panel"
+          title="Hide left panel"
         >
-          {hidden ? "›" : "‹"}
+          ‹
         </button>
       </div>
     </div>
@@ -160,7 +226,7 @@
         </span>
       </div>
     </div>
-    <div class="module-list">
+    <div class="module-list" role="list" ondragend={resetDrag}>
       {#each pathPreviewItems as item (item.id)}
         {@render row(item)}
       {/each}

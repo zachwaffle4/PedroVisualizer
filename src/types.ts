@@ -135,8 +135,9 @@ export interface Settings {
   headingArrowColor?: string; // Color of the heading arrow
   headingArrowThickness?: number; // Thickness/stroke width of the heading arrow
   pathOpacity?: number; // Opacity of path lines (0-1)
+  leftPanelMinWidth?: number; // Minimum width of the left sidebar in pixels
   rightPanelMinWidth?: number; // Minimum width of the right sidebar in pixels
-  penToolAccuracy?: number; // Maximum number of control points used by the pen tool
+  penToolMaxPaths?: number; // Maximum number of paths a single pen stroke may create
   experimentalFeatures?: {
     optimize?: boolean;
     curveThrough?: boolean;

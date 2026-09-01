@@ -110,32 +110,52 @@ export function getPointOnStroke(
   return { ...points[points.length - 1] };
 }
 
-export function sampleStrokeControlPoints(
+/**
+ * Reduce a stroke to at most `maxVertices` anchors, keeping the first and last
+ * points and resampling the interior at even arc-length intervals.
+ */
+export function limitStrokeVertices(
   points: BasePoint[],
-  controlPointCount: number,
+  maxVertices: number,
 ): BasePoint[] {
-  if (points.length < 2 || controlPointCount <= 0) return [];
-
-  const totalLength = points.reduce((sum, point, index) => {
-    if (index === 0) return 0;
-    return sum + distanceBetweenPoints(points[index - 1], point);
-  }, 0);
-
-  if (totalLength === 0) return [];
-
-  const sampled: BasePoint[] = [];
-  for (let index = 1; index <= controlPointCount; index += 1) {
-    const targetDistance = (totalLength * index) / (controlPointCount + 1);
-    sampled.push(getPointOnStroke(points, targetDistance));
+  if (points.length <= 2) return points.map((point) => ({ ...point }));
+  if (maxVertices >= points.length) return points.map((p) => ({ ...p }));
+  if (maxVertices <= 2) {
+    return [{ ...points[0] }, { ...points[points.length - 1] }];
   }
 
-  return sampled;
+  const totalLength = points.reduce(
+    (sum, point, index) =>
+      index === 0 ? 0 : sum + distanceBetweenPoints(points[index - 1], point),
+    0,
+  );
+
+  if (totalLength === 0) {
+    return [{ ...points[0] }, { ...points[points.length - 1] }];
+  }
+
+  const resampled: BasePoint[] = [{ ...points[0] }];
+  const interiorCount = maxVertices - 2;
+  for (let index = 1; index <= interiorCount; index += 1) {
+    resampled.push(
+      getPointOnStroke(points, (totalLength * index) / (interiorCount + 1)),
+    );
+  }
+  resampled.push({ ...points[points.length - 1] });
+
+  return resampled;
 }
 
-/** Turn a freehand stroke into a start point plus a single fitted line. */
+/**
+ * Turn a freehand stroke into a start point plus a chain of standard paths.
+ *
+ * Paths are plain straight segments: no control points and therefore no
+ * Bezier curvature. `maxPaths` caps how many segments a single stroke may
+ * produce; 0 or less means "no limit".
+ */
 export function fitStrokeToLines(
   stroke: BasePoint[],
-  penToolAccuracy: number,
+  maxPaths: number,
   startAnchor?: BasePoint,
 ): { startPoint: StartPose; lines: AtomicPath[] } | null {
   const cleanedStroke = dedupeStrokePoints(
@@ -149,43 +169,46 @@ export function fitStrokeToLines(
   if (cleanedStroke.length < 2) return null;
 
   const simplifiedStroke = simplifyStrokePoints(cleanedStroke, 0.45);
-  const strokePoints = dedupeStrokePoints(simplifiedStroke, 0.05);
+  let strokePoints = dedupeStrokePoints(simplifiedStroke, 0.05);
 
   if (strokePoints.length < 2) return null;
 
-  const maxControlPoints = Math.max(0, Math.round(Number(penToolAccuracy)));
-  const controlPointsSource = startAnchor
-    ? [
-        {
-          x: clampFieldCoordinate(startAnchor.x),
-          y: clampFieldCoordinate(startAnchor.y),
-        },
-        ...strokePoints,
-      ]
-    : strokePoints;
-  const controlPoints = sampleStrokeControlPoints(
-    controlPointsSource,
-    maxControlPoints,
-  );
-
-  const fittedLines: AtomicPath[] = [
-    {
-      kind: "atomic",
-      id: makePathId(),
-      name: "Path 1",
-      endPoint: {
-        x: strokePoints[strokePoints.length - 1].x,
-        y: strokePoints[strokePoints.length - 1].y,
+  // With an anchor the stroke continues from an existing point, so that
+  // anchor becomes the first vertex and every stroke sample is an endpoint.
+  if (startAnchor) {
+    strokePoints = [
+      {
+        x: clampFieldCoordinate(startAnchor.x),
+        y: clampFieldCoordinate(startAnchor.y),
       },
-      controlPoints,
-      heading: { type: "tangential", reverse: false },
+      ...strokePoints,
+    ];
+  }
+
+  const pathLimit = Math.max(0, Math.round(Number(maxPaths) || 0));
+  if (pathLimit > 0) {
+    strokePoints = limitStrokeVertices(strokePoints, pathLimit + 1);
+  }
+
+  // Each remaining vertex after the first becomes the endpoint of one path.
+  const fittedLines: AtomicPath[] = strokePoints
+    .slice(1)
+    .map((point, index) => ({
+      kind: "atomic" as const,
+      id: makePathId(),
+      name: `Path ${index + 1}`,
+      endPoint: { x: point.x, y: point.y },
+      controlPoints: [],
+      heading: { type: "tangential" as const, reverse: false },
       color: getRandomColor(),
+      locked: false,
       waitBeforeMs: 0,
       waitAfterMs: 0,
       waitBeforeName: "",
       waitAfterName: "",
-    },
-  ];
+    }));
+
+  if (fittedLines.length === 0) return null;
 
   return {
     startPoint: {

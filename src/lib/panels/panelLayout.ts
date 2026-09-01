@@ -23,8 +23,29 @@ export function getMinCenterWidthForSquare(): number {
 export function getRightPanelMinWidth(settings: Settings | undefined): number {
   return Math.max(
     0,
-    Number(settings?.rightPanelMinWidth ?? DEFAULT_SETTINGS.rightPanelMinWidth),
+    Number(
+      settings?.rightPanelMinWidth ?? DEFAULT_SETTINGS.rightPanelMinWidth ?? 0,
+    ) || 0,
   );
+}
+
+export function getLeftPanelMinWidth(settings: Settings | undefined): number {
+  return Math.max(
+    0,
+    Number(
+      settings?.leftPanelMinWidth ?? DEFAULT_SETTINGS.leftPanelMinWidth ?? 0,
+    ) || 0,
+  );
+}
+
+/** Minimum width configured for either sidebar. */
+export function getPanelMinWidth(
+  side: "left" | "right",
+  settings: Settings | undefined,
+): number {
+  return side === "right"
+    ? getRightPanelMinWidth(settings)
+    : getLeftPanelMinWidth(settings);
 }
 
 export function getTotalAvailableWidth(): number {
@@ -38,8 +59,7 @@ export function clampPanelWidth(
   otherPanelWidth: number,
   settings: Settings | undefined,
 ): number {
-  const minWidth =
-    side === "right" ? getRightPanelMinWidth(settings) : SIDE_PANEL_MIN_WIDTH;
+  const minWidth = getPanelMinWidth(side, settings);
   const minCenterWidthForSquare = getMinCenterWidthForSquare();
   // Panel cannot push the center below minCenterWidthForSquare, but must be at
   // least minWidth; if those conflict the panel shrinks and the center grows.
