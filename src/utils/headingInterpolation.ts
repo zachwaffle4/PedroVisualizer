@@ -302,10 +302,19 @@ export function getPointAndTangentAtProgress(
   const clampedProgress = clamp(progress, 0, 1);
   const point = getCurvePoint(clampedProgress, points);
   const epsilon = 0.01;
-  const nextT = clamp(clampedProgress + (reversed ? -epsilon : epsilon), 0, 1);
-  const nextPoint = getCurvePoint(nextT, points);
-  const dx = nextPoint.x - point.x;
-  const dy = nextPoint.y - point.y;
+  const direction = reversed ? -epsilon : epsilon;
+
+  let fromT = clampedProgress;
+  let toT = clamp(clampedProgress + direction, 0, 1);
+  if (fromT === toT) {
+    fromT = clamp(clampedProgress - direction, 0, 1);
+    toT = clampedProgress;
+  }
+
+  const from = getCurvePoint(fromT, points);
+  const to = getCurvePoint(toT, points);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
 
   return {
     point,
