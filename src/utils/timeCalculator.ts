@@ -12,7 +12,7 @@ import {
   getLineEndHeading,
   getAngularDifference,
 } from "./math";
-import { approximateCurveLength } from "./headingInterpolation";
+import { approximateCurveLength } from "./pathTraversal";
 import { makeLineId } from "./ids";
 
 /**

@@ -5,14 +5,16 @@ import {
   radiansToDegrees,
 } from "./math";
 import { getRobotCorners } from "./geometry";
+import { evaluatePiecewiseHeading } from "./headingInterpolation";
 import {
   CURVE_SAMPLES,
   approximateCurveLength,
-  evaluatePiecewiseHeading,
+  flattenToAtomicSegments,
   getChainTraversalState,
   getPointAndTangentAtProgress,
   lineCurvePoints,
-} from "./headingInterpolation";
+  segmentStartAt,
+} from "./pathTraversal";
 import type {
   Line,
   TimelineEvent,
@@ -142,7 +144,10 @@ export function calculateRobotState(
     // --- MOVEMENT TRAVEL ---
     const lineIdx = activeEvent.lineIndex!;
     const currentLine = lines[lineIdx];
-    const prevPoint = lineIdx === 0 ? startPoint : lines[lineIdx - 1].endPoint;
+    const prevPoint = segmentStartAt(startPoint, lines, lineIdx);
+    if (!prevPoint) {
+      return { x: xScale(startPoint.x), y: yScale(startPoint.y), heading: 0 };
+    }
 
     // Calculate progress (in seconds) within this specific travel event
     const timeIntoEvent = currentSeconds - activeEvent.startTime;
@@ -593,13 +598,11 @@ export function generateGhostPathPoints(
     right: BasePoint;
   }> = [];
 
-  let currentLineStart: BasePoint = startPoint;
-
   // For each line segment
-  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const line = lines[lineIdx];
-    const curvePoints = lineCurvePoints(currentLineStart, line);
-
+  for (const { line, points: curvePoints } of flattenToAtomicSegments(
+    startPoint,
+    lines,
+  )) {
     // Sample along this line segment with a minimum to better capture curves
     const samplesPerLine = Math.max(10, Math.ceil(samples / lines.length));
     for (let i = 0; i <= samplesPerLine; i++) {
@@ -629,8 +632,6 @@ export function generateGhostPathPoints(
         right: rightPoint,
       });
     }
-
-    currentLineStart = line.endPoint;
   }
 
   if (robotStates.length === 0) return [];
@@ -743,25 +744,17 @@ export function generateOnionLayers(
   }> = [];
 
   // Calculate total path length
-  let totalLength = 0;
-  let currentLineStart: BasePoint = startPoint;
-
-  for (let li = 0; li < lines.length; li++) {
-    const line = lines[li];
-    const curvePoints = lineCurvePoints(currentLineStart, line);
-
-    totalLength += approximateCurveLength(curvePoints, CURVE_SAMPLES);
-    currentLineStart = line.endPoint;
-  }
+  const segments = flattenToAtomicSegments(startPoint, lines);
+  const totalLength = segments.reduce(
+    (sum, segment) => sum + segment.arcLength,
+    0,
+  );
 
   // Sample robot positions at regular intervals
-  currentLineStart = startPoint;
   let accumulatedLength = 0;
   let nextLayerDistance = spacing;
 
-  for (let li = 0; li < lines.length; li++) {
-    const line = lines[li];
-    const curvePoints = lineCurvePoints(currentLineStart, line);
+  for (const { line, index: li, points: curvePoints } of segments) {
     let prevPos = curvePoints[0];
     let prevT = 0;
 
@@ -809,8 +802,6 @@ export function generateOnionLayers(
       prevPos = pos;
       prevT = t;
     }
-
-    currentLineStart = line.endPoint;
   }
 
   return layers;

@@ -17,6 +17,7 @@
   import { calculatePathTime, normalizeLines } from "../utils";
   import SelectedPathInspector from "./components/SelectedPathInspector.svelte";
   import { curveThroughPoints } from "../utils/math";
+  import { segmentStartAt } from "../utils/pathTraversal";
 
   interface Props {
     percent: number;
@@ -162,10 +163,8 @@
     if (seqIndex === -1) return;
 
     // Get previous point (startPoint for first line, or previous line's endPoint)
-    const prevPoint =
-      selectedLineIndex > 0
-        ? lines[selectedLineIndex - 1].endPoint
-        : startPoint;
+    const prevPoint = segmentStartAt(startPoint, lines, selectedLineIndex);
+    if (!prevPoint) return;
     const startPt = selectedLine.endPoint;
 
     // Find next line in sequence

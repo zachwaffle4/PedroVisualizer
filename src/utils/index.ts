@@ -19,9 +19,16 @@ export {
   validatePiecewiseHeadingInterpolation,
   degreesToRadians,
   headingAngleAt,
+  evaluatePiecewiseHeading,
+} from "./headingInterpolation";
+
+export {
+  CURVE_SAMPLES,
   lineCurvePoints,
   approximateCurveLength,
   getPointAndTangentAtProgress,
   getChainTraversalState,
-  evaluatePiecewiseHeading,
-} from "./headingInterpolation";
+  flattenToAtomicSegments,
+  segmentStartAt,
+} from "./pathTraversal";
+export type { FlatSegment } from "./pathTraversal";

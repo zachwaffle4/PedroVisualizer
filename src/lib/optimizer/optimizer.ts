@@ -1,6 +1,7 @@
 import type { Line, Settings, Shape, StartPose } from "../../types";
 import { FIELD_SIZE } from "../../config/defaults";
 import { headingAngleAt } from "../../utils/headingInterpolation";
+import { segmentStartAt } from "../../utils/pathTraversal";
 
 export const OPTIMIZER_BASE_URL = "https://fpa.pedropathing.com";
 
@@ -14,7 +15,7 @@ export function buildOptimizationPayload(
   const line = lines[lineIndex];
   if (!line) throw new Error("Line not found");
 
-  const startPt = lineIndex === 0 ? startPoint : lines[lineIndex - 1]?.endPoint;
+  const startPt = segmentStartAt(startPoint, lines, lineIndex);
   if (!startPt) throw new Error("Missing start point for optimization");
 
   const waypoints = [startPt, ...line.controlPoints, line.endPoint].map((p) => [

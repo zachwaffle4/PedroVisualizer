@@ -3,10 +3,12 @@ import type { Path } from "two.js/src/path";
 import type { Line as PathLine } from "two.js/src/shapes/line";
 import type { BasePoint, Line, Settings } from "../../types";
 import { getCurvePoint, quadraticToCubic } from "../../utils/math";
+import {
+  CURVE_SAMPLES,
+  flattenToAtomicSegments,
+} from "../../utils/pathTraversal";
 import { LINE_WIDTH } from "../../config/defaults";
 import type { PathRenderSpec, SceneScales } from "./types";
-
-const CURVE_SAMPLES = 100;
 
 export function buildSegmentPath(
   startPoint: BasePoint,
@@ -90,29 +92,26 @@ export function buildPathElements(
   const baseOpacity = (settings.pathOpacity || 1.0) * opacityScale;
   const elements: (Path | PathLine)[] = [];
 
-  lines.forEach((line, idx) => {
-    if (!line || !line.endPoint) return;
-    const segmentStart =
-      idx === 0 ? startPoint : lines[idx - 1]?.endPoint || null;
-    if (!segmentStart) return;
+  flattenToAtomicSegments(startPoint, lines).forEach(
+    ({ line, index: idx, start: segmentStart }) => {
+      const lineElem = buildSegmentPath(segmentStart, line, scales);
 
-    const lineElem = buildSegmentPath(segmentStart, line, scales);
+      lineElem.id = `${idPrefix}-${idx + 1}`;
+      lineElem.stroke = color || line.color;
+      lineElem.linewidth = scales.x(LINE_WIDTH);
+      lineElem.noFill();
 
-    lineElem.id = `${idPrefix}-${idx + 1}`;
-    lineElem.stroke = color || line.color;
-    lineElem.linewidth = scales.x(LINE_WIDTH);
-    lineElem.noFill();
+      if (honorLocked && line.locked) {
+        lineElem.dashes = [scales.x(2), scales.x(2)];
+        lineElem.opacity = baseOpacity * 0.7;
+      } else {
+        if (honorLocked) lineElem.dashes = [];
+        lineElem.opacity = baseOpacity;
+      }
 
-    if (honorLocked && line.locked) {
-      lineElem.dashes = [scales.x(2), scales.x(2)];
-      lineElem.opacity = baseOpacity * 0.7;
-    } else {
-      if (honorLocked) lineElem.dashes = [];
-      lineElem.opacity = baseOpacity;
-    }
-
-    elements.push(lineElem);
-  });
+      elements.push(lineElem);
+    },
+  );
 
   return elements;
 }
