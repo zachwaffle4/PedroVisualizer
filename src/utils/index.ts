@@ -32,5 +32,12 @@ export {
   segmentStartById,
   atomicSegments,
   findSegmentById,
+  findPathById,
+  locatePath,
+  groupPaths,
+  groupingProblem,
+  ungroupPath,
+  replaceSegment,
+  updatePath,
 } from "./pathTraversal";
 export type { FlatSegment } from "./pathTraversal";

@@ -86,6 +86,14 @@ export interface Compound {
 
 export type CompoundPath = Extract<Path, Compound>;
 
+export type PathListItem = {
+  id: string;
+  name: string;
+} & (
+  | { kind: "atomic"; x: string; y: string; children?: never }
+  | { kind: "compound"; children: PathListItem[]; x?: never; y?: never }
+);
+
 export type SequencePathItem = {
   kind: "path";
   lineId: string;

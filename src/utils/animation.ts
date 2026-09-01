@@ -9,8 +9,10 @@ import { evaluatePiecewiseHeading } from "./headingInterpolation";
 import {
   CURVE_SAMPLES,
   approximateCurveLength,
+  effectiveHeadingAt,
   findSegmentById,
   flattenToAtomicSegments,
+  type FlatSegment,
   getChainTraversalState,
   getPointAndTangentAtProgress,
   lineCurvePoints,
@@ -143,7 +145,8 @@ export function calculateRobotState(
     };
   } else {
     // --- MOVEMENT TRAVEL ---
-    const segment = flattenToAtomicSegments(startPoint, lines).find(
+    const pathSegments = flattenToAtomicSegments(startPoint, lines);
+    const segment = pathSegments.find(
       (entry) => entry.line.id === activeEvent.lineId,
     );
     if (!segment) {
@@ -240,7 +243,15 @@ export function calculateRobotState(
     const lineChain = pathChains.find((chain) =>
       (chain.lineIds || []).includes(currentLine.id || ""),
     );
-    const lineHeading = currentLine.heading;
+    // A group's heading replaces its children's and is measured across the
+    // whole group, so both the rule and its t come from there.
+    const effective = effectiveHeadingAt(
+      pathSegments,
+      segment.index,
+      linePercent,
+    );
+    const lineHeading = effective.heading;
+    const headingT = effective.t;
     const lineTraversal = getPointAndTangentAtProgress(
       curvePoints as BasePoint[],
       linePercent,
@@ -297,7 +308,7 @@ export function calculateRobotState(
     if (globalPiecewise) {
       robotHeading = -evaluatePiecewiseHeading(
         globalPiecewise,
-        chain ? chain.progress : linePercent,
+        chain ? chain.progress : headingT,
         {
           points: curvePoints as BasePoint[],
           currentPoint: chain?.state.point || lineTraversal.point,
@@ -312,7 +323,7 @@ export function calculateRobotState(
           robotHeading = -shortestRotation(
             lineHeading.startDeg,
             lineHeading.endDeg,
-            linePercent,
+            headingT,
           );
           break;
         case "constant":
@@ -547,21 +558,27 @@ export function createAnimationController(
  * +x, measured in inches space).
  */
 function segmentHeadingAt(
-  line: AtomicPath,
-  curvePoints: BasePoint[],
-  t: number,
+  segments: FlatSegment[],
+  index: number,
+  localT: number,
 ): number {
-  const heading = line.heading;
+  const curvePoints = segments[index].points;
+  // A group's heading replaces its children's and spans the whole group, so
+  // both the rule and the t to read it at come from there.
+  const { heading, t } = effectiveHeadingAt(segments, index, localT);
+
   switch (heading.type) {
     case "linear":
       return shortestRotation(heading.startDeg, heading.endDeg, t);
     case "constant":
       return heading.degrees;
     case "tangential":
-      return getPointAndTangentAtProgress(curvePoints, t, heading.reverse)
+      // The tangent is a property of the curve under the robot, so this stays
+      // on the segment's own geometry even inside a group.
+      return getPointAndTangentAtProgress(curvePoints, localT, heading.reverse)
         .tangentDegrees;
     case "piecewise": {
-      const traversal = getPointAndTangentAtProgress(curvePoints, t);
+      const traversal = getPointAndTangentAtProgress(curvePoints, localT);
       return evaluatePiecewiseHeading(heading.piecewiseHeading, t, {
         points: curvePoints,
         currentPoint: traversal.point,
@@ -599,16 +616,14 @@ export function generateGhostPathPoints(
   }> = [];
 
   // For each line segment
-  for (const { line, points: curvePoints } of flattenToAtomicSegments(
-    startPoint,
-    lines,
-  )) {
+  const pathSegments = flattenToAtomicSegments(startPoint, lines);
+  for (const { index, points: curvePoints } of pathSegments) {
     // Sample along this line segment with a minimum to better capture curves
     const samplesPerLine = Math.max(10, Math.ceil(samples / lines.length));
     for (let i = 0; i <= samplesPerLine; i++) {
       const t = i / samplesPerLine;
       const robotPosInches = getCurvePoint(t, curvePoints);
-      const heading = segmentHeadingAt(line, curvePoints, t);
+      const heading = segmentHeadingAt(pathSegments, index, t);
 
       // Build left/right rails directly from center + normal offsets
       const headingRad = (heading * Math.PI) / 180;
@@ -777,7 +792,7 @@ export function generateOnionLayers(
         const interpolationT = 1 - overshoot / segmentLength;
         const layerT = prevT + (t - prevT) * interpolationT;
         const robotPosInches = getCurvePoint(layerT, curvePoints);
-        const heading = segmentHeadingAt(line, curvePoints, layerT);
+        const heading = segmentHeadingAt(segments, li, layerT);
 
         // Get robot corners for this position
         const corners = getRobotCorners(

@@ -3,6 +3,7 @@
 
   import type {
     AtomicPath,
+    CompoundPath,
     Path,
     BasePoint,
     Settings,
@@ -17,12 +18,15 @@
   import PlaybackControls from "./components/PlaybackControls.svelte";
   import { calculatePathTime, normalizePaths } from "../utils";
   import SelectedPathInspector from "./components/SelectedPathInspector.svelte";
+  import SelectedGroupInspector from "./components/SelectedGroupInspector.svelte";
   import { curveThroughPoints } from "../utils/math";
   import {
     atomicSegments,
+    findPathById,
     findSegmentById,
     replaceSegment,
     segmentStartById,
+    updatePath,
   } from "../utils/pathTraversal";
 
   interface Props {
@@ -34,6 +38,11 @@
     lines: Path[];
     sequence: SequenceItem[];
     selectedLineId?: string | null;
+    /** The primary selection, which may be a group. */
+    selectedPathId?: string | null;
+    /** Selection is owned by the app, so changes are reported rather than bound. */
+    onSelectPath: (id: string | null) => void;
+    onUngroup: () => void;
     selectedPointIndex?: number;
     robotXY: BasePoint;
     robotHeading: number;
@@ -54,7 +63,10 @@
     startPoint = $bindable(),
     lines = $bindable(),
     sequence = $bindable(),
-    selectedLineId = $bindable(null),
+    selectedLineId = null,
+    selectedPathId = null,
+    onSelectPath,
+    onUngroup,
     selectedPointIndex = $bindable(0),
     robotXY,
     robotHeading,
@@ -70,9 +82,16 @@
   let curveTension = $state(1.0);
   let obstaclesOpen = $state(true);
 
-  // Editing acts on a drivable curve, which may live inside a group.
+  // The inspector follows whatever is selected: a group shows group controls,
+  // anything else falls back to the first drivable curve.
+  let selectedPath: Path | null = $derived(
+    findPathById(lines, selectedPathId) ?? atomicSegments(lines)[0] ?? null,
+  );
+  let selectedGroup: CompoundPath | null = $derived(
+    selectedPath?.kind === "compound" ? selectedPath : null,
+  );
   let selectedLine: AtomicPath | null = $derived(
-    findSegmentById(lines, selectedLineId) || atomicSegments(lines)[0] || null,
+    selectedPath?.kind === "atomic" ? selectedPath : null,
   );
   let selectedLineIndex = $derived(
     selectedLine
@@ -233,8 +252,7 @@
     // Select whatever now occupies the deleted segment's slot, or the last one.
     const removedIndex = selectedLineIndex;
     removeLine(removedIndex);
-    selectedLineId =
-      lines[Math.min(removedIndex, lines.length - 1)]?.id ?? null;
+    onSelectPath(lines[Math.min(removedIndex, lines.length - 1)]?.id ?? null);
     selectedPointIndex = 0;
     recordChange();
   }
@@ -288,27 +306,49 @@
       </div>
     </div>
 
-    <SelectedPathInspector
-      {selectedLine}
-      {selectedLinePathIndex}
-      {selectedPoint}
-      bind:selectedPointIndex
-      {selectedPointLabel}
-      lineCount={lines.length}
-      {settings}
-      bind:curveTension
-      onNameInput={(name) => {
-        if (selectedLine) selectedLine.name = name;
-        lines = [...lines];
-      }}
-      onLinesChanged={() => (lines = [...lines])}
-      onRecordChange={() => recordChange?.()}
-      onCurveFromSelected={curveFromSelected}
-      onDeleteSelectedLine={deleteSelectedLine}
-      onDeleteControlPoint={deleteSelectedControlPoint}
-      onToggleLock={toggleSelectedPointLock}
-      onCommitPointChange={commitSelectedPointChange}
-    />
+    {#if selectedGroup}
+      <SelectedGroupInspector
+        {selectedGroup}
+        segmentCount={atomicSegments(selectedGroup.segments).length}
+        onNameInput={(name) => {
+          lines = updatePath(lines, selectedGroup.id, (path) => ({
+            ...path,
+            name,
+          }));
+        }}
+        onHeadingOverrideChange={(heading) => {
+          lines = updatePath(lines, selectedGroup.id, (path) =>
+            path.kind === "compound" ? { ...path, heading } : path,
+          );
+          recordChange?.();
+        }}
+        onLinesChanged={() => (lines = [...lines])}
+        onRecordChange={() => recordChange?.()}
+        {onUngroup}
+      />
+    {:else}
+      <SelectedPathInspector
+        {selectedLine}
+        {selectedLinePathIndex}
+        {selectedPoint}
+        bind:selectedPointIndex
+        {selectedPointLabel}
+        lineCount={lines.length}
+        {settings}
+        bind:curveTension
+        onNameInput={(name) => {
+          if (selectedLine) selectedLine.name = name;
+          lines = [...lines];
+        }}
+        onLinesChanged={() => (lines = [...lines])}
+        onRecordChange={() => recordChange?.()}
+        onCurveFromSelected={curveFromSelected}
+        onDeleteSelectedLine={deleteSelectedLine}
+        onDeleteControlPoint={deleteSelectedControlPoint}
+        onToggleLock={toggleSelectedPointLock}
+        onCommitPointChange={commitSelectedPointChange}
+      />
+    {/if}
   </div>
 
   <PlaybackControls

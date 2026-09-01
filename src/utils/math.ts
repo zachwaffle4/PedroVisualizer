@@ -1,4 +1,4 @@
-import type { AtomicPath, BasePoint, Point } from "../types";
+import type { AtomicPath, BasePoint, Heading, Point } from "../types";
 import { FIELD_SIZE } from "../config/defaults";
 
 export function clamp(value: number, min: number, max: number): number {
@@ -138,15 +138,22 @@ export function getTangentAngle(
   return Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
 }
 
+/**
+ * `heading` and `t` are passed in when a group overrides this segment's own
+ * heading: the rule then belongs to the group and `t` is the position within
+ * it, so a linear sweep is read part-way through rather than restarted.
+ */
 export function getLineStartHeading(
   line: AtomicPath | undefined,
   previousPoint: Point,
+  heading: Heading | undefined = line?.heading,
+  t = 0,
 ): number {
-  if (!line || !line.endPoint) return 0;
+  if (!line || !line.endPoint || !heading) return 0;
 
-  const heading = line.heading;
   if (heading.type === "constant") return heading.degrees;
-  if (heading.type === "linear") return heading.startDeg;
+  if (heading.type === "linear")
+    return shortestRotation(heading.startDeg, heading.endDeg, t);
   if (heading.type === "tangential") {
     const nextP =
       line.controlPoints.length > 0 ? line.controlPoints[0] : line.endPoint;
@@ -161,12 +168,14 @@ export function getLineStartHeading(
 export function getLineEndHeading(
   line: AtomicPath | undefined,
   previousPoint: Point,
+  heading: Heading | undefined = line?.heading,
+  t = 1,
 ): number {
-  if (!line || !line.endPoint) return 0;
+  if (!line || !line.endPoint || !heading) return 0;
 
-  const heading = line.heading;
   if (heading.type === "constant") return heading.degrees;
-  if (heading.type === "linear") return heading.endDeg;
+  if (heading.type === "linear")
+    return shortestRotation(heading.startDeg, heading.endDeg, t);
   if (heading.type === "tangential") {
     const prevP =
       line.controlPoints.length > 0

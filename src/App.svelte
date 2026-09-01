@@ -5,6 +5,7 @@
     Path,
     BasePoint,
     Settings,
+    PathListItem,
     SequenceItem,
     SequencePathItem,
     Shape,
@@ -114,6 +115,10 @@
     updateRobotImageDisplay,
     atomicSegments,
     findSegmentById,
+    findPathById,
+    groupPaths,
+    groupingProblem,
+    ungroupPath,
   } from "./utils";
   import {
     POINT_RADIUS,
@@ -205,13 +210,86 @@
       lineId: ln.id,
     })),
   );
-  // Selection is held by segment id so it survives reordering, insertion and
-  // deletion. The index is derived for the places that still need a position.
-  let selectedLineId: string | null = $state(initialLines[0]?.id ?? null);
+  let selectedPathIds: string[] = $state(
+    initialLines[0] ? [initialLines[0].id] : [],
+  );
+  let primarySelectedId = $derived(
+    selectedPathIds[selectedPathIds.length - 1] ?? null,
+  );
+  let selectedPath = $derived(findPathById(lines, primarySelectedId));
+  /** Only a drivable segment can have its points edited. */
+  let selectedLineId = $derived(
+    selectedPath?.kind === "atomic" ? selectedPath.id : null,
+  );
   let selectedPointIndex = $state(0);
   let selectedLineIndex = $derived(
     lines.findIndex((line) => line.id === selectedLineId),
   );
+
+  let displayOrderIds = $derived.by(() => {
+    const out: string[] = [];
+    const walk = (nodes: Path[]) => {
+      for (const node of nodes) {
+        out.push(node.id);
+        if (node.kind === "compound") walk(node.segments);
+      }
+    };
+    walk(lines);
+    return out;
+  });
+
+  function selectPathFromList(
+    id: string,
+    modifiers: { additive?: boolean; range?: boolean } = {},
+  ) {
+    if (modifiers.range && primarySelectedId) {
+      const from = displayOrderIds.indexOf(primarySelectedId);
+      const to = displayOrderIds.indexOf(id);
+      if (from >= 0 && to >= 0) {
+        const [lo, hi] = from <= to ? [from, to] : [to, from];
+        const span = displayOrderIds.slice(lo, hi + 1);
+        // Keep the clicked path primary so the inspector follows the cursor.
+        selectedPathIds = [...span.filter((entry) => entry !== id), id];
+        return;
+      }
+    }
+
+    if (modifiers.additive) {
+      selectedPathIds = selectedPathIds.includes(id)
+        ? selectedPathIds.filter((entry) => entry !== id)
+        : [...selectedPathIds, id];
+      return;
+    }
+
+    selectedPathIds = [id];
+  }
+
+  let groupingBlockedReason = $derived(groupingProblem(lines, selectedPathIds));
+
+  function groupSelectedPaths() {
+    if (groupingBlockedReason) return;
+    const next = groupPaths(lines, selectedPathIds);
+    if (next === lines) return;
+    lines = next;
+    // Select the group that was just created.
+    const created = next.find(
+      (path) =>
+        path.kind === "compound" &&
+        !selectedPathIds.includes(path.id) &&
+        path.segments.some((child) => selectedPathIds.includes(child.id)),
+    );
+    selectedPathIds = created ? [created.id] : selectedPathIds;
+    recordChange();
+  }
+
+  function ungroupSelectedPath() {
+    const target = selectedPath;
+    if (!target || target.kind !== "compound") return;
+    const childIds = target.segments.map((child) => child.id);
+    lines = ungroupPath(lines, target.id);
+    selectedPathIds = childIds;
+    recordChange();
+  }
   let penToolEnabled = $state(false);
   let penStroke: BasePoint[] = $state([]);
   let penIsDrawing = $state(false);
@@ -315,7 +393,7 @@
       );
       sequence = nextSequence;
 
-      selectedLineId = newLine.id;
+      selectedPathIds = [newLine.id];
       selectedPointIndex = 0;
     } else {
       startPoint = fitted.startPoint;
@@ -324,7 +402,7 @@
         kind: "path",
         lineId: line.id,
       }));
-      selectedLineId = lines[0]?.id ?? null;
+      selectedPathIds = lines[0] ? [lines[0].id] : [];
       selectedPointIndex = 0;
     }
 
@@ -1586,7 +1664,7 @@
     const newLineId = newLine.id;
     lines = [...lines, newLine];
     sequence = [...sequence, { kind: "path", lineId: newLineId }];
-    selectedLineId = newLineId;
+    selectedPathIds = [newLineId];
     selectedPointIndex = 0;
     recordChange();
   }
@@ -1679,7 +1757,7 @@
     });
     sequence = nextSequence;
 
-    selectedLineId = newLineId;
+    selectedPathIds = [newLineId];
     selectedPointIndex = 0;
     recordChange();
   }
@@ -1688,7 +1766,7 @@
     const line = findSegmentById(lines, lineId);
     if (!line) return;
 
-    selectedLineId = line.id;
+    selectedPathIds = [line.id];
     const maxPointIndex = Math.max(0, line.controlPoints.length);
     selectedPointIndex = Math.max(0, Math.min(pointIndex, maxPointIndex));
   }
@@ -1872,11 +1950,20 @@
   });
   let initialAssetsReady = $derived(fieldMapLoaded && robotImageLoaded);
   run(() => {
-    if (lines.length > 0 && !lines.some((line) => line.id === selectedLineId)) {
-      selectedLineId = lines[lines.length - 1].id;
+    // Drop selected paths that no longer exist, falling back to the last one.
+    const present = selectedPathIds.filter((id) => findPathById(lines, id));
+    if (present.length !== selectedPathIds.length) {
+      selectedPathIds =
+        present.length > 0
+          ? present
+          : lines.length > 0
+            ? [lines[lines.length - 1].id]
+            : [];
     }
   });
-  let selectedLine = $derived(findSegmentById(lines, selectedLineId));
+  let selectedLine = $derived(
+    selectedPath?.kind === "atomic" ? selectedPath : null,
+  );
   let selectedPoint = $derived.by(() => {
     const line = selectedLine;
     if (!line || selectedPointIndex < 0) return null;
@@ -1976,17 +2063,33 @@
       return getAnimationDuration(maxTime / 1000);
     })(),
   );
-  let pathPreviewItems = $derived(
-    atomicSegments(lines)
-      .slice(0, 14)
-      .map((line, idx) => ({
-        index: idx + 1,
-        lineId: line.id,
-        name: line.name || `Path ${idx + 1}`,
-        x: formatPathPoint(line.endPoint.x),
-        y: formatPathPoint(line.endPoint.y),
-      })),
-  );
+  let pathPreviewItems = $derived.by(() => {
+    let segmentNumber = 0;
+    let groupNumber = 0;
+
+    const build = (nodes: Path[]): PathListItem[] =>
+      nodes.map((node) => {
+        if (node.kind === "compound") {
+          groupNumber += 1;
+          return {
+            id: node.id,
+            name: node.name || `Group ${groupNumber}`,
+            kind: "compound" as const,
+            children: build(node.segments),
+          };
+        }
+        segmentNumber += 1;
+        return {
+          id: node.id,
+          name: node.name || `Path ${segmentNumber}`,
+          kind: "atomic" as const,
+          x: formatPathPoint(node.endPoint.x),
+          y: formatPathPoint(node.endPoint.y),
+        };
+      });
+
+    return build(lines);
+  });
   // Load additional paths when activePaths changes
   $effect.pre(() => {
     loadAdditionalPaths($activePaths);
@@ -2551,11 +2654,20 @@
         hidden={leftPanelHidden}
         fileName={basename($currentFilePath) || "untitled_path.pp"}
         version="v1.2.1"
-        lineCount={lines.length}
+        lineCount={atomicSegments(lines).length}
         {pathPreviewItems}
-        {selectedLineId}
+        {selectedPathIds}
+        {primarySelectedId}
+        {groupingBlockedReason}
+        canUngroup={selectedPath?.kind === "compound"}
         onToggleVisibility={toggleLeftPanelVisibility}
-        onSelectLine={(lineId) => selectLinePoint(lineId, 0)}
+        onSelectPath={(id, modifiers) => {
+          selectPathFromList(id, modifiers);
+          // Selecting a segment also moves the point editor to its endpoint.
+          if (findSegmentById(lines, id)) selectedPointIndex = 0;
+        }}
+        onGroup={groupSelectedPaths}
+        onUngroup={ungroupSelectedPath}
       />
 
       <PanelDivider
@@ -2709,7 +2821,10 @@
           bind:startPoint
           bind:lines
           bind:sequence
-          bind:selectedLineId
+          {selectedLineId}
+          selectedPathId={primarySelectedId}
+          onSelectPath={(id) => (selectedPathIds = id ? [id] : [])}
+          onUngroup={ungroupSelectedPath}
           bind:selectedPointIndex
           {settings}
           bind:percent

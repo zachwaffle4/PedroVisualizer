@@ -12,7 +12,11 @@ import {
   getLineEndHeading,
   getAngularDifference,
 } from "./math";
-import { atomicSegments, flattenToAtomicSegments } from "./pathTraversal";
+import {
+  atomicSegments,
+  effectiveHeadingAt,
+  flattenToAtomicSegments,
+} from "./pathTraversal";
 
 /**
  * Calculate time for a motion profile (trapezoidal or triangular)
@@ -70,11 +74,9 @@ export function calculatePathTime(
   let currentHeading = startPoint.headingDeg;
 
   // Create map by order of segments
+  const pathSegments = flattenToAtomicSegments(startPoint, lines);
   const segmentById = new Map(
-    flattenToAtomicSegments(startPoint, lines).map((segment) => [
-      segment.line.id,
-      segment,
-    ]),
+    pathSegments.map((segment) => [segment.line.id, segment]),
   );
 
   // The default sequence drives every leaf, not every top-level entry: a group
@@ -115,7 +117,17 @@ export function calculatePathTime(
     const prevPoint = segment.start;
 
     // --- ROTATION CHECK ---
-    const requiredStartHeading = getLineStartHeading(line, prevPoint);
+    // Read the heading the same way the animation does, so a group override
+    // does not leave the timeline turning to an angle that is never shown.
+    const startHeading = effectiveHeadingAt(pathSegments, segment.index, 0);
+    const endHeading = effectiveHeadingAt(pathSegments, segment.index, 1);
+
+    const requiredStartHeading = getLineStartHeading(
+      line,
+      prevPoint,
+      startHeading.heading,
+      startHeading.t,
+    );
     if (idx === 0) currentHeading = requiredStartHeading;
     const diff = Math.abs(
       getAngularDifference(currentHeading, requiredStartHeading),
@@ -161,7 +173,12 @@ export function calculatePathTime(
       lineId: line.id,
     });
     currentTime += segmentTime;
-    currentHeading = getLineEndHeading(line, prevPoint);
+    currentHeading = getLineEndHeading(
+      line,
+      prevPoint,
+      endHeading.heading,
+      endHeading.t,
+    );
     robotPoint = line.endPoint;
   });
 

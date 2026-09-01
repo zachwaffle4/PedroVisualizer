@@ -2,10 +2,12 @@ import type {
   AtomicPath,
   BasePoint,
   CompoundPath,
+  Heading,
   Path,
   PathChain,
 } from "../types";
 import { clamp, getCurvePoint, radiansToDegrees } from "./math";
+import { makePathId } from "./ids";
 
 /** Sample count used when approximating a curve's arc length. */
 export const CURVE_SAMPLES = 100;
@@ -144,9 +146,38 @@ export function flattenToAtomicSegments(
 }
 
 /**
- * Where a given segment begins. Addressed by id because a nested segment has
- * no single position in the top-level array.
+ * Which heading actually applies part-way along a segment so that compound path headings override their children.
  */
+export function effectiveHeadingAt(
+  segments: FlatSegment[],
+  index: number,
+  localT: number,
+): { heading: Heading; t: number } {
+  const segment = segments[index];
+  const override = segment.ancestors.find((group) => group.heading);
+  if (!override?.heading) {
+    return { heading: segment.line.heading, t: localT };
+  }
+
+  const members = segments.filter((entry) =>
+    entry.ancestors.includes(override),
+  );
+  const total = members.reduce((sum, entry) => sum + entry.arcLength, 0);
+  if (total <= 1e-9) return { heading: override.heading, t: 0 };
+
+  let travelled = 0;
+  for (const member of members) {
+    if (member === segment) break;
+    travelled += member.arcLength;
+  }
+
+  return {
+    heading: override.heading,
+    t: clamp((travelled + localT * segment.arcLength) / total, 0, 1),
+  };
+}
+
+/** Addressed by id because a nested segment has no single top-level position. */
 export function segmentStartById(
   startPoint: BasePoint,
   paths: Path[],
@@ -157,14 +188,13 @@ export function segmentStartById(
   return segments.find((segment) => segment.line.id === lineId)?.start ?? null;
 }
 
-/** Every drivable segment in a path tree, in the order they are driven. */
+/** Every drivable segment, in the order they are driven. */
 export function atomicSegments(paths: Path[]): AtomicPath[] {
   return paths.flatMap((path) =>
     path.kind === "compound" ? atomicSegments(path.segments) : [path],
   );
 }
 
-/** Find a segment anywhere in the tree by its id. */
 export function findSegmentById(
   paths: Path[],
   lineId: string | null,
@@ -173,11 +203,146 @@ export function findSegmentById(
   return atomicSegments(paths).find((path) => path.id === lineId) ?? null;
 }
 
+export function findPathById(paths: Path[], id: string | null): Path | null {
+  if (!id) return null;
+  for (const path of paths) {
+    if (path.id === id) return path;
+    if (path.kind === "compound") {
+      const found = findPathById(path.segments, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+export function locatePath(
+  paths: Path[],
+  id: string,
+): { siblings: Path[]; index: number } | null {
+  const index = paths.findIndex((path) => path.id === id);
+  if (index >= 0) return { siblings: paths, index };
+
+  for (const path of paths) {
+    if (path.kind !== "compound") continue;
+    const found = locatePath(path.segments, id);
+    if (found) return found;
+  }
+  return null;
+}
+
 /**
- * Replace one segment wherever it sits, rebuilding only the groups on the way
- * down to it. Returns the original array when the id is not found, so callers
- * can treat an unchanged reference as "no such segment".
+ * Determines if a set of paths can be grouped; null if they can, otherwise the problem.
  */
+export function groupingProblem(paths: Path[], ids: string[]): string | null {
+  const unique = [...new Set(ids)];
+  if (unique.length < 2) return "Select at least two paths to group.";
+
+  const located = unique.map((id) => locatePath(paths, id));
+  if (located.some((entry) => entry === null)) return "Path not found.";
+
+  const siblings = located[0]!.siblings;
+  if (located.some((entry) => entry!.siblings !== siblings)) {
+    return "Paths must be in the same group to be grouped together.";
+  }
+
+  const indices = located.map((entry) => entry!.index).sort((a, b) => a - b);
+  const contiguous =
+    indices[indices.length - 1] - indices[0] + 1 === indices.length;
+  if (!contiguous) return "Only neighbouring paths can be grouped.";
+
+  return null;
+}
+
+/** Returns the original array unchanged when the selection cannot be grouped. */
+export function groupPaths(paths: Path[], ids: string[]): Path[] {
+  if (groupingProblem(paths, ids)) return paths;
+
+  const idSet = new Set(ids);
+
+  const walk = (nodes: Path[]): Path[] => {
+    const indices = nodes
+      .map((node, index) => (idSet.has(node.id) ? index : -1))
+      .filter((index) => index >= 0);
+
+    if (indices.length === idSet.size) {
+      const first = indices[0];
+      const last = indices[indices.length - 1];
+      const children = nodes.slice(first, last + 1);
+      const group: Path = {
+        kind: "compound",
+        id: makePathId(),
+        name: "",
+        // Groups inherit their first child's colour so the list stays readable.
+        color: children[0].color,
+        segments: children,
+        waitBeforeMs: 0,
+        waitAfterMs: 0,
+        waitBeforeName: "",
+        waitAfterName: "",
+      };
+      return [...nodes.slice(0, first), group, ...nodes.slice(last + 1)];
+    }
+
+    return nodes.map((node) =>
+      node.kind === "compound"
+        ? { ...node, segments: walk(node.segments) }
+        : node,
+    );
+  };
+
+  return walk(paths);
+}
+
+/** Returns the original array unchanged when the id is not found. */
+export function updatePath(
+  paths: Path[],
+  id: string,
+  update: (path: Path) => Path,
+): Path[] {
+  let changed = false;
+
+  const walk = (nodes: Path[]): Path[] =>
+    nodes.map((node) => {
+      if (node.id === id) {
+        changed = true;
+        return update(node);
+      }
+      if (node.kind === "compound") {
+        const segments = walk(node.segments);
+        return segments === node.segments ? node : { ...node, segments };
+      }
+      return node;
+    });
+
+  const next = walk(paths);
+  return changed ? next : paths;
+}
+
+/** Removes one level only; groups nested inside are preserved. */
+export function ungroupPath(paths: Path[], groupId: string): Path[] {
+  let changed = false;
+
+  const walk = (nodes: Path[]): Path[] => {
+    const next: Path[] = [];
+    for (const node of nodes) {
+      if (node.kind === "compound" && node.id === groupId) {
+        changed = true;
+        next.push(...node.segments);
+        continue;
+      }
+      if (node.kind === "compound") {
+        next.push({ ...node, segments: walk(node.segments) });
+        continue;
+      }
+      next.push(node);
+    }
+    return next;
+  };
+
+  const result = walk(paths);
+  return changed ? result : paths;
+}
+
 export function replaceSegment(
   paths: Path[],
   lineId: string,
