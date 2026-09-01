@@ -27,7 +27,6 @@ export {
   lineCurvePoints,
   approximateCurveLength,
   getPointAndTangentAtProgress,
-  getChainTraversalState,
   flattenToAtomicSegments,
   segmentStartById,
   atomicSegments,

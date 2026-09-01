@@ -41,8 +41,7 @@
       if (draft.reverse === undefined) draft.reverse = false;
     } else if (next === "piecewise") {
       if (!draft.piecewiseHeading) {
-        draft.piecewiseHeading =
-          createDefaultPiecewiseHeadingInterpolation("path");
+        draft.piecewiseHeading = createDefaultPiecewiseHeadingInterpolation();
       }
     }
     dispatch("change");

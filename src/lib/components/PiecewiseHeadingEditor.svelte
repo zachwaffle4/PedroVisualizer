@@ -43,17 +43,9 @@
       !Array.isArray(config.segments) ||
       config.segments.length === 0
     ) {
-      config = createDefaultPiecewiseHeadingInterpolation("path");
+      config = createDefaultPiecewiseHeadingInterpolation();
       dispatch("change");
       return;
-    }
-
-    if (config.scope === "chain") {
-      config = normalizePiecewiseHeadingInterpolation({
-        ...config,
-        scope: "path",
-      });
-      dispatch("change");
     }
   }
 
@@ -125,7 +117,7 @@
     if (locked) return;
     const normalized = normalizePiecewiseHeadingInterpolation(config);
     if (normalized.segments.length <= 1) {
-      config = createDefaultPiecewiseHeadingInterpolation("path");
+      config = createDefaultPiecewiseHeadingInterpolation();
       notifyChange();
       return;
     }
@@ -538,7 +530,7 @@
         const normalized = normalizePiecewiseHeadingInterpolation(config);
         const last =
           normalized.segments[normalized.segments.length - 1] ||
-          createDefaultPiecewiseHeadingInterpolation("path").segments[0];
+          createDefaultPiecewiseHeadingInterpolation().segments[0];
         const newSegment = segmentTemplate(last, last.endProgress, 1);
         normalized.segments[normalized.segments.length - 1].endProgress =
           Math.max(

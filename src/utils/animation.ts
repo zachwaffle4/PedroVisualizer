@@ -10,10 +10,8 @@ import {
   CURVE_SAMPLES,
   approximateCurveLength,
   effectiveHeadingAt,
-  findSegmentById,
   flattenToAtomicSegments,
   type FlatSegment,
-  getChainTraversalState,
   getPointAndTangentAtProgress,
   lineCurvePoints,
 } from "./pathTraversal";
@@ -23,7 +21,6 @@ import type {
   TimelineEvent,
   BasePoint,
   Settings,
-  PathChain,
   StartPose,
 } from "../types";
 import type { ScaleLinear } from "d3";
@@ -99,7 +96,6 @@ export function calculateRobotState(
   settings: Settings,
   xScale: ScaleLinear<number, number>,
   yScale: ScaleLinear<number, number>,
-  pathChains: PathChain[] = [],
 ): RobotState {
   if (!timeline || timeline.length === 0) {
     return {
@@ -159,7 +155,7 @@ export function calculateRobotState(
     const timeIntoEvent = currentSeconds - activeEvent.startTime;
 
     // Determine fraction along the path using motion profile when available
-    let linePercent = 0;
+    let linePercent: number;
     const { points: curvePoints, length: segLength } = getCurveGeometry(
       prevPoint,
       currentLine,
@@ -201,10 +197,11 @@ export function calculateRobotState(
       // Clamp timeIntoEvent to event duration
       const t = Math.max(0, Math.min(timeIntoEvent, activeEvent.duration));
 
-      // Compute distance traveled at time t
+      // Compute distance traveled at time t. A zero-length segment leaves this
+      // at 0, which the fraction below turns into 0 anyway.
       let dist = 0;
       if (segLength === 0) {
-        linePercent = 0;
+        // nothing to travel
       } else if (segLength >= accDist + decDist) {
         if (t <= accTime) {
           dist = 0.5 * maxA * t * t;
@@ -240,9 +237,6 @@ export function calculateRobotState(
     const robotXY = { x: xScale(robotInchesXY.x), y: yScale(robotInchesXY.y) };
     let robotHeading = 0;
 
-    const lineChain = pathChains.find((chain) =>
-      (chain.lineIds || []).includes(currentLine.id || ""),
-    );
     // A group's heading replaces its children's and is measured across the
     // whole group, so both the rule and its t come from there.
     const effective = effectiveHeadingAt(
@@ -257,64 +251,16 @@ export function calculateRobotState(
       linePercent,
       lineHeading.type === "tangential" ? lineHeading.reverse : undefined,
     );
-    const globalPiecewise =
-      lineHeading.type === "piecewise" &&
-      (lineHeading.piecewiseHeading.scope || "path") === "path"
-        ? lineHeading.piecewiseHeading
-        : lineChain?.globalHeadingInterpolation;
-    const chainScoped =
-      !!globalPiecewise &&
-      !!lineChain &&
-      globalPiecewise === lineChain.globalHeadingInterpolation;
-
-    const chain =
-      chainScoped && lineChain
-        ? (() => {
-            const chainLines = (lineChain.lineIds || [])
-              .map((lineId) => findSegmentById(lines, lineId))
-              .filter((line): line is AtomicPath => Boolean(line));
-            const currentChainIndex = chainLines.findIndex(
-              (line) => line.id === currentLine.id,
-            );
-            if (currentChainIndex < 0) return null;
-
-            const chainLengths = flattenToAtomicSegments(
-              startPoint,
-              chainLines,
-            ).map((entry) => entry.arcLength);
-            const totalLength = chainLengths.reduce(
-              (sum, value) => sum + value,
-              0,
-            );
-            if (totalLength <= 1e-9) return null;
-
-            const priorLength = chainLengths
-              .slice(0, currentChainIndex)
-              .reduce((sum, value) => sum + value, 0);
-            const currentLength = chainLengths[currentChainIndex] || 0;
-            const progress =
-              (priorLength + currentLength * linePercent) / totalLength;
-            const state = getChainTraversalState(
-              lineChain,
-              lines,
-              startPoint,
-              progress,
-            );
-            return state ? { state, progress } : null;
-          })()
-        : null;
 
     // Calculate Heading based on Line Type
-    if (globalPiecewise) {
+    if (lineHeading.type === "piecewise") {
       robotHeading = -evaluatePiecewiseHeading(
-        globalPiecewise,
-        chain ? chain.progress : headingT,
+        lineHeading.piecewiseHeading,
+        headingT,
         {
           points: curvePoints as BasePoint[],
-          currentPoint: chain?.state.point || lineTraversal.point,
-          tangentDegrees:
-            chain?.state.tangentDegrees ?? lineTraversal.tangentDegrees,
-          chainState: chain?.state,
+          currentPoint: lineTraversal.point,
+          tangentDegrees: lineTraversal.tangentDegrees,
         },
       );
     } else {

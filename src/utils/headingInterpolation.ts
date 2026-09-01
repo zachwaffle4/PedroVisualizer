@@ -104,13 +104,8 @@ export function createDefaultPiecewiseSegment(): PiecewiseHeadingSegment {
   };
 }
 
-export function createDefaultPiecewiseHeadingInterpolation(
-  scope: "path" | "chain" = "path",
-): PiecewiseHeadingInterpolation {
-  return {
-    scope,
-    segments: [createDefaultPiecewiseSegment()],
-  };
+export function createDefaultPiecewiseHeadingInterpolation(): PiecewiseHeadingInterpolation {
+  return { segments: [createDefaultPiecewiseSegment()] };
 }
 
 function normalizeSegment(
@@ -138,7 +133,6 @@ function normalizeSegment(
 export function normalizePiecewiseHeadingInterpolation(
   input?: PiecewiseHeadingInterpolation,
 ): PiecewiseHeadingInterpolation {
-  const scope = input?.scope === "chain" ? "chain" : "path";
   const sourceSegments = input?.segments?.length
     ? input.segments
     : [createDefaultPiecewiseSegment()];
@@ -173,7 +167,7 @@ export function normalizePiecewiseHeadingInterpolation(
   }
 
   if (repaired.length === 0) {
-    return createDefaultPiecewiseHeadingInterpolation(scope);
+    return createDefaultPiecewiseHeadingInterpolation();
   }
 
   const merged: PiecewiseHeadingSegment[] = [];
@@ -200,10 +194,7 @@ export function normalizePiecewiseHeadingInterpolation(
   merged[0].startProgress = 0;
   merged[merged.length - 1].endProgress = 1;
 
-  return {
-    scope,
-    segments: merged,
-  };
+  return { segments: merged };
 }
 
 export function validatePiecewiseHeadingInterpolation(
@@ -270,8 +261,6 @@ export function evaluatePiecewiseHeading(
     points: BasePoint[];
     currentPoint: BasePoint;
     tangentDegrees: number;
-    chainState?: { point: BasePoint; tangentDegrees: number };
-    pointOverride?: BasePoint;
   },
 ): number {
   const normalized = normalizePiecewiseHeadingInterpolation(interpolation);
@@ -291,14 +280,8 @@ export function evaluatePiecewiseHeading(
     1,
   );
 
-  const sourcePoint =
-    interpolation.scope === "chain"
-      ? options.chainState?.point || options.currentPoint
-      : options.pointOverride || options.currentPoint;
-  const sourceTangent =
-    interpolation.scope === "chain"
-      ? (options.chainState?.tangentDegrees ?? options.tangentDegrees)
-      : options.tangentDegrees;
+  const sourcePoint = options.currentPoint;
+  const sourceTangent = options.tangentDegrees;
 
   switch (segment.interpolationType) {
     case "constant":

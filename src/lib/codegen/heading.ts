@@ -49,11 +49,6 @@ function piecewiseCall(
   if (segments.length === 0) {
     return { kind: "unsupported", reason: "piecewise heading has no segments" };
   }
-  if (interpolation.scope === "chain") {
-    ctx.warn(
-      "chain-scoped piecewise heading is exported per path, not across the chain",
-    );
-  }
 
   const nodes: PiecewiseNode[] = [];
   let previousT = 0;

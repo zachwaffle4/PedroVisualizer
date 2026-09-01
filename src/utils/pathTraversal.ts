@@ -4,7 +4,6 @@ import type {
   CompoundPath,
   Heading,
   Path,
-  PathChain,
 } from "../types";
 import { clamp, getCurvePoint, radiansToDegrees } from "./math";
 import { makePathId } from "./ids";
@@ -363,52 +362,4 @@ export function replaceSegment(
 
   const next = walk(paths);
   return changed ? next : paths;
-}
-
-/**
- * Position and tangent at a fraction along a whole chain, measured by arc
- * length across every segment in it.
- */
-export function getChainTraversalState(
-  chain: PathChain,
-  lines: Path[],
-  startPoint: BasePoint,
-  progress: number,
-): { point: BasePoint; tangentDegrees: number } {
-  const chainLines = chain.lineIds
-    .map((lineId) => lines.find((line) => line.id === lineId))
-    .filter((line): line is Path => Boolean(line));
-
-  if (chainLines.length === 0) {
-    return getPointAndTangentAtProgress([startPoint, startPoint], 0);
-  }
-
-  const segments = flattenToAtomicSegments(startPoint, chainLines);
-  const totalLength = segments.reduce(
-    (sum, segment) => sum + segment.arcLength,
-    0,
-  );
-  if (totalLength <= 1e-9) {
-    return getPointAndTangentAtProgress(segments[0].points, 0);
-  }
-
-  const targetDistance = clamp(progress, 0, 1) * totalLength;
-  let accumulated = 0;
-
-  for (const segment of segments) {
-    const nextAccumulated = accumulated + segment.arcLength;
-    if (
-      targetDistance <= nextAccumulated ||
-      segment === segments[segments.length - 1]
-    ) {
-      const localProgress =
-        segment.arcLength <= 1e-9
-          ? 0
-          : (targetDistance - accumulated) / segment.arcLength;
-      return getPointAndTangentAtProgress(segment.points, localProgress);
-    }
-    accumulated = nextAccumulated;
-  }
-
-  return getPointAndTangentAtProgress(segments[segments.length - 1].points, 1);
 }

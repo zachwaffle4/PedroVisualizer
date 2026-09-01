@@ -23,7 +23,6 @@ export interface PiecewiseHeadingSegment {
 }
 
 export interface PiecewiseHeadingInterpolation {
-  scope?: "path" | "chain";
   segments: PiecewiseHeadingSegment[];
 }
 
@@ -108,18 +107,6 @@ export type SequenceWaitItem = {
 };
 
 export type SequenceItem = SequencePathItem | SequenceWaitItem;
-
-// PathChain is kept only for backward compatibility with older saved files.
-// The visualizer and code export now treat timeline entries as Pedro Path objects.
-
-export interface PathChain {
-  id: string;
-  name: string;
-  color: string;
-  lineIds: string[];
-  // Only present in older saved files; never written by current code.
-  globalHeadingInterpolation?: PiecewiseHeadingInterpolation;
-}
 
 export interface Settings {
   xVelocity: number;
