@@ -1,5 +1,5 @@
 import type * as d3 from "d3";
-import type { BasePoint, Line } from "../../types";
+import type { BasePoint, Path } from "../../types";
 
 export interface SceneScales {
   x: d3.ScaleLinear<number, number>;
@@ -8,7 +8,7 @@ export interface SceneScales {
 
 export interface PathRenderSpec {
   startPoint: BasePoint;
-  lines: Line[];
+  lines: Path[];
   idPrefix: string;
   color?: string;
   opacityScale?: number;

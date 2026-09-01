@@ -1,7 +1,10 @@
 import type {
+  ControlPoint,
   Heading,
   HeadingType,
-  Line,
+  AtomicPath,
+  Path,
+  WaitSegment,
   PiecewiseHeadingInterpolation,
   Point,
   SequenceItem,
@@ -9,10 +12,11 @@ import type {
 } from "../types";
 import { getRandomColor } from "./color";
 import { headingAngleAt } from "./headingInterpolation";
+import { atomicSegments } from "./pathTraversal";
 
-import { makeLineId } from "./ids";
+import { makePathId } from "./ids";
 
-export { makeLineId };
+export { makePathId };
 
 /** The heading a segment gets when none is recorded. */
 export const DEFAULT_HEADING: Heading = { type: "tangential", reverse: false };
@@ -31,12 +35,31 @@ interface LegacyHeadingFields {
 
 type LegacyPoint = Point & LegacyHeadingFields;
 
-/** A line as it may appear in a file: heading either on the line or the endpoint. */
-export type StoredLine = Omit<Line, "heading" | "endPoint" | "id"> & {
+/** Fields every stored path carries, whatever its kind. */
+type StoredCommon = {
   /** Absent in files written before segments carried ids. */
   id?: string;
+  color?: string;
+  name?: string;
+  locked?: boolean;
+  waitBefore?: WaitSegment;
+  waitAfter?: WaitSegment;
+  waitBeforeMs?: number;
+  waitAfterMs?: number;
+  waitBeforeName?: string;
+  waitAfterName?: string;
+  /** Either the current object form or the pre-migration string. */
   heading?: Heading | HeadingType;
-  endPoint: LegacyPoint;
+};
+
+/**
+ * A path as it may appear in a file.
+ */
+export type StoredPath = StoredCommon & {
+  kind?: "atomic" | "compound";
+  endPoint?: LegacyPoint;
+  controlPoints?: ControlPoint[];
+  segments?: StoredPath[];
 };
 
 /** A start point as it may appear in a file: `headingDeg`, or legacy fields. */
@@ -77,7 +100,7 @@ function headingFromLegacy(source: LegacyHeadingFields): Heading {
  * Resolve a line's heading, preferring the current path-level field and
  * falling back to the pre-migration copy stored on its endpoint.
  */
-export function normalizeHeading(line: StoredLine): Heading {
+export function normalizeHeading(line: StoredPath): Heading {
   if (isHeading(line.heading)) return line.heading;
   if (typeof line.heading === "string") {
     return headingFromLegacy({ ...line.endPoint, heading: line.heading });
@@ -85,14 +108,15 @@ export function normalizeHeading(line: StoredLine): Heading {
   return headingFromLegacy(line.endPoint ?? {});
 }
 
-/** A new path segment ending at (x, y), with defaults matching normalizeLines. */
-export function createLine(
+/** A new drivable segment ending at (x, y), with defaults matching normalizePaths. */
+export function createSegment(
   x: number,
   y: number,
   options: { reverse?: boolean } = {},
-): Line {
+): AtomicPath {
   return {
-    id: makeLineId(),
+    kind: "atomic",
+    id: makePathId(),
     endPoint: { x, y },
     controlPoints: [],
     heading: { type: "tangential", reverse: options.reverse ?? false },
@@ -123,42 +147,65 @@ export function normalizeStartPose(input: StoredStartPose): StartPose {
   };
 }
 
-export function normalizeLines(input: StoredLine[] = []): Line[] {
-  return (input || []).map((line) => ({
-    ...line,
-    id: line.id || makeLineId(),
-    endPoint: {
-      x: line.endPoint?.x ?? 0,
-      y: line.endPoint?.y ?? 0,
-      name: line.endPoint?.name,
-      locked: line.endPoint?.locked,
-    },
-    controlPoints: line.controlPoints || [],
-    heading: normalizeHeading(line),
-    color: line.color || getRandomColor(),
-    name: line.name || "",
+function normalizeCommon(path: StoredPath) {
+  return {
+    id: path.id || makePathId(),
+    color: path.color || getRandomColor(),
+    name: path.name || "",
+    locked: path.locked,
+    waitBefore: path.waitBefore,
+    waitAfter: path.waitAfter,
     waitBeforeMs: Math.max(
       0,
-      Number(line.waitBeforeMs ?? line.waitBefore?.durationMs ?? 0),
+      Number(path.waitBeforeMs ?? path.waitBefore?.durationMs ?? 0),
     ),
     waitAfterMs: Math.max(
       0,
-      Number(line.waitAfterMs ?? line.waitAfter?.durationMs ?? 0),
+      Number(path.waitAfterMs ?? path.waitAfter?.durationMs ?? 0),
     ),
-    waitBeforeName: line.waitBeforeName ?? line.waitBefore?.name ?? "",
-    waitAfterName: line.waitAfterName ?? line.waitAfter?.name ?? "",
-  }));
+    waitBeforeName: path.waitBeforeName ?? path.waitBefore?.name ?? "",
+    waitAfterName: path.waitAfterName ?? path.waitAfter?.name ?? "",
+  };
+}
+
+export function normalizePaths(input: StoredPath[] = []): Path[] {
+  return (input || []).map((path): Path => {
+    const common = normalizeCommon(path);
+
+    if (Array.isArray(path.segments)) {
+      return {
+        ...common,
+        kind: "compound",
+        segments: normalizePaths(path.segments),
+        // A group's heading is optional: without one, each child keeps its own.
+        heading: isHeading(path.heading) ? path.heading : undefined,
+      };
+    }
+
+    return {
+      ...common,
+      kind: "atomic",
+      endPoint: {
+        x: path.endPoint?.x ?? 0,
+        y: path.endPoint?.y ?? 0,
+        name: path.endPoint?.name,
+        locked: path.endPoint?.locked,
+      },
+      controlPoints: path.controlPoints || [],
+      heading: normalizeHeading(path),
+    };
+  });
 }
 
 export function deriveSequence(
   data: any,
-  normalizedLines: Line[],
+  normalizedLines: Path[],
 ): SequenceItem[] {
   if (Array.isArray(data?.sequence) && data.sequence.length) {
     return data.sequence as SequenceItem[];
   }
 
-  return normalizedLines.map((ln) => ({
+  return atomicSegments(normalizedLines).map((ln) => ({
     kind: "path",
     lineId: ln.id,
   }));

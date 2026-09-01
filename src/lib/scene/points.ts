@@ -1,11 +1,12 @@
 import Two from "two.js";
-import type { BasePoint, Line, Shape } from "../../types";
+import type { BasePoint, Path, Shape } from "../../types";
 import { POINT_RADIUS } from "../../config/defaults";
 import {
   pointKey,
   type PointContainer,
   type PointRegistry,
 } from "../canvas/pointRefs";
+import { atomicSegments, findSegmentById } from "../../utils/pathTraversal";
 import type { SceneScales } from "./types";
 
 const LABEL_FAMILY = "ui-sans-serif, system-ui, sans-serif";
@@ -79,7 +80,7 @@ function highlightRing(
  */
 export function buildPathPointMarkers(
   startPoint: BasePoint,
-  lines: Line[],
+  lines: Path[],
   scales: SceneScales,
   options: PointMarkerOptions,
 ): any[] {
@@ -129,7 +130,8 @@ export function buildPathPointMarkers(
   record(startElem.id, startPoint, null, -1, Boolean(startPoint.locked));
   elements.push(startElem);
 
-  lines.forEach((line, idx) => {
+  // Markers are drawn per drivable curve, so groups are walked through.
+  atomicSegments(lines).forEach((line, idx) => {
     if (!line || !line.endPoint) return;
     const isSelectedLine = selection?.lineId === line.id;
 
@@ -207,11 +209,11 @@ export function buildPathPointMarkers(
 }
 
 export function buildSelectedPointRing(
-  lines: Line[],
+  lines: Path[],
   selection: PointSelection,
   scales: SceneScales,
 ): any[] {
-  const selectedLine = lines.find((line) => line.id === selection.lineId);
+  const selectedLine = findSegmentById(lines, selection.lineId);
   const selectedPoint =
     selectedLine && selection.pointIndex >= 0
       ? selection.pointIndex === 0

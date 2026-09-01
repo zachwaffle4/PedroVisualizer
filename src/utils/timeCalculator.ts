@@ -1,6 +1,6 @@
 import type {
   BasePoint,
-  Line,
+  Path,
   Settings,
   StartPose,
   TimePrediction,
@@ -12,7 +12,7 @@ import {
   getLineEndHeading,
   getAngularDifference,
 } from "./math";
-import { flattenToAtomicSegments } from "./pathTraversal";
+import { atomicSegments, flattenToAtomicSegments } from "./pathTraversal";
 
 /**
  * Calculate time for a motion profile (trapezoidal or triangular)
@@ -48,7 +48,7 @@ function calculateMotionProfileTime(
 
 export function calculatePathTime(
   startPoint: StartPose,
-  lines: Line[],
+  lines: Path[],
   settings: Settings,
   sequence?: SequenceItem[],
 ): TimePrediction {
@@ -77,10 +77,12 @@ export function calculatePathTime(
     ]),
   );
 
+  // The default sequence drives every leaf, not every top-level entry: a group
+  // is not itself drivable.
   const seq: SequenceItem[] =
     sequence && sequence.length
       ? sequence
-      : lines.map((ln) => ({ kind: "path", lineId: ln.id }));
+      : atomicSegments(lines).map((ln) => ({ kind: "path", lineId: ln.id }));
 
   // Where the robot actually sits, which does follow execution order.
   let robotPoint: BasePoint = startPoint;

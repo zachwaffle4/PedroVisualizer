@@ -1,4 +1,4 @@
-import type { Line, SequenceItem, StartPose } from "../../types";
+import type { Path, SequenceItem, StartPose } from "../../types";
 import { emitSource } from "./emit";
 import { formatSource } from "./format";
 import { javaSpec } from "./languages/java";
@@ -19,7 +19,7 @@ export type * from "./types";
 async function generate(
   spec: LanguageSpec,
   startPoint: StartPose,
-  lines: Line[],
+  lines: Path[],
   exportMode: ExportMode,
   mirrorHorizontally: boolean,
 ): Promise<string> {
@@ -31,7 +31,7 @@ async function generate(
 
 export function generateJavaCode(
   startPoint: StartPose,
-  lines: Line[],
+  lines: Path[],
   exportMode: ExportMode = "class",
   mirrorHorizontally = false,
 ): Promise<string> {
@@ -40,7 +40,7 @@ export function generateJavaCode(
 
 export function generateKotlinCode(
   startPoint: StartPose,
-  lines: Line[],
+  lines: Path[],
   exportMode: ExportMode = "class",
   mirrorHorizontally = false,
 ): Promise<string> {
@@ -55,7 +55,7 @@ export function generateKotlinCode(
 
 export function generateSequentialCommandCode(
   startPoint: StartPose,
-  lines: Line[],
+  lines: Path[],
   className: string | null = null,
   sequence?: SequenceItem[],
 ): Promise<string> {

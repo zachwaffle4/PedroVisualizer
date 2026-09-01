@@ -1,4 +1,4 @@
-import type { BasePoint, Line, Point } from "../types";
+import type { AtomicPath, BasePoint, Point } from "../types";
 import { FIELD_SIZE } from "../config/defaults";
 
 export function clamp(value: number, min: number, max: number): number {
@@ -139,7 +139,7 @@ export function getTangentAngle(
 }
 
 export function getLineStartHeading(
-  line: Line | undefined,
+  line: AtomicPath | undefined,
   previousPoint: Point,
 ): number {
   if (!line || !line.endPoint) return 0;
@@ -159,7 +159,7 @@ export function getLineStartHeading(
 }
 
 export function getLineEndHeading(
-  line: Line | undefined,
+  line: AtomicPath | undefined,
   previousPoint: Point,
 ): number {
   if (!line || !line.endPoint) return 0;

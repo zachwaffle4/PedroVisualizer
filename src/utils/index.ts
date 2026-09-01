@@ -29,6 +29,8 @@ export {
   getPointAndTangentAtProgress,
   getChainTraversalState,
   flattenToAtomicSegments,
-  segmentStartAt,
+  segmentStartById,
+  atomicSegments,
+  findSegmentById,
 } from "./pathTraversal";
 export type { FlatSegment } from "./pathTraversal";

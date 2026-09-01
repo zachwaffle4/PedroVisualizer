@@ -2,7 +2,8 @@
   import { run } from "svelte/legacy";
 
   import type {
-    Line,
+    AtomicPath,
+    Path,
     BasePoint,
     Settings,
     Shape,
@@ -14,10 +15,15 @@
   import RobotPositionDisplay from "./components/RobotPositionDisplay.svelte";
   import StartingPointSection from "./components/StartingPointSection.svelte";
   import PlaybackControls from "./components/PlaybackControls.svelte";
-  import { calculatePathTime, normalizeLines } from "../utils";
+  import { calculatePathTime, normalizePaths } from "../utils";
   import SelectedPathInspector from "./components/SelectedPathInspector.svelte";
   import { curveThroughPoints } from "../utils/math";
-  import { segmentStartAt } from "../utils/pathTraversal";
+  import {
+    atomicSegments,
+    findSegmentById,
+    replaceSegment,
+    segmentStartById,
+  } from "../utils/pathTraversal";
 
   interface Props {
     percent: number;
@@ -25,7 +31,7 @@
     play: () => any;
     pause: () => any;
     startPoint: StartPose;
-    lines: Line[];
+    lines: Path[];
     sequence: SequenceItem[];
     selectedLineId?: string | null;
     selectedPointIndex?: number;
@@ -64,8 +70,9 @@
   let curveTension = $state(1.0);
   let obstaclesOpen = $state(true);
 
-  let selectedLine: Line | null = $derived(
-    lines.find((line) => line.id === selectedLineId) || lines[0] || null,
+  // Editing acts on a drivable curve, which may live inside a group.
+  let selectedLine: AtomicPath | null = $derived(
+    findSegmentById(lines, selectedLineId) || atomicSegments(lines)[0] || null,
   );
   let selectedLineIndex = $derived(
     selectedLine
@@ -164,7 +171,7 @@
     if (seqIndex === -1) return;
 
     // Get previous point (startPoint for first line, or previous line's endPoint)
-    const prevPoint = segmentStartAt(startPoint, lines, selectedLineIndex);
+    const prevPoint = segmentStartById(startPoint, lines, selectedLine.id);
     if (!prevPoint) return;
     const startPt = selectedLine.endPoint;
 
@@ -177,7 +184,7 @@
       }
     }
 
-    const nextLine = nextLineId ? lines.find((l) => l.id === nextLineId) : null;
+    const nextLine = findSegmentById(lines, nextLineId);
     const endPt = nextLine?.endPoint || startPt;
 
     // Build poses: prevPoint -> startPt -> endPt
@@ -191,21 +198,17 @@
       return;
     }
 
-    const nextLines = [...lines];
     const seg = segments[0];
-    const existing = nextLines[selectedLineIndex];
-    if (existing) {
-      nextLines[selectedLineIndex] = {
-        ...existing,
-        controlPoints: [
-          { x: seg.cp1.x, y: seg.cp1.y },
-          { x: seg.cp2.x, y: seg.cp2.y },
-        ],
-        endPoint: { ...existing.endPoint, x: seg.end.x, y: seg.end.y },
-      };
-    }
+    const nextLines = replaceSegment(lines, selectedLine.id, (existing) => ({
+      ...existing,
+      controlPoints: [
+        { x: seg.cp1.x, y: seg.cp1.y },
+        { x: seg.cp2.x, y: seg.cp2.y },
+      ],
+      endPoint: { ...existing.endPoint, x: seg.end.x, y: seg.end.y },
+    }));
 
-    lines = normalizeLines(nextLines);
+    lines = normalizePaths(nextLines);
     recordChange();
     alert(`Curved path with tension ${tension}`);
   }

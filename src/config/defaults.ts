@@ -1,5 +1,5 @@
-import type { StartPose, Line, Shape, Settings } from "../types";
-import { makeLineId } from "../utils/ids";
+import type { StartPose, AtomicPath, Shape, Settings } from "../types";
+import { makePathId } from "../utils/ids";
 
 /**
  * Default robot dimensions
@@ -76,10 +76,11 @@ export function getDefaultStartPoint(): StartPose {
 /**
  * Get default initial path lines
  */
-export function getDefaultLines(): Line[] {
+export function getDefaultPaths(): AtomicPath[] {
   return [
     {
-      id: makeLineId(),
+      kind: "atomic",
+      id: makePathId(),
       name: "Path 1",
       endPoint: { x: 56, y: 36 },
       controlPoints: [],

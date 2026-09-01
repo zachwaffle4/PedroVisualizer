@@ -1,12 +1,12 @@
 import Two from "two.js";
-import type { Path } from "two.js/src/path";
+import type { Path as TwoPath } from "two.js/src/path";
 import type { BasePoint, TimePrediction } from "../../types";
 import type { SceneScales } from "./types";
 
 export function buildClosedPolygon(
   points: BasePoint[],
   { x, y }: SceneScales,
-): Path {
+): TwoPath {
   const vertices = [
     new Two.Anchor(
       x(points[0].x),
@@ -56,7 +56,7 @@ export function buildGhostPath(
   ghostPoints: BasePoint[],
   options: { id: string; color: string },
   scales: SceneScales,
-): Path | null {
+): TwoPath | null {
   if (ghostPoints.length < 3) return null;
 
   const ghostPath = buildClosedPolygon(ghostPoints, scales);
@@ -72,7 +72,7 @@ export function buildOnionLayer(
   corners: BasePoint[],
   options: { id: string; color: string },
   scales: SceneScales,
-): Path {
+): TwoPath {
   const layer = buildClosedPolygon(corners, scales);
   layer.id = options.id;
   layer.stroke = options.color;

@@ -2,10 +2,11 @@
   import { run } from "svelte/legacy";
 
   import type {
-    Line,
+    Path,
     BasePoint,
     Settings,
     SequenceItem,
+    SequencePathItem,
     Shape,
     StartPose,
   } from "./types";
@@ -21,7 +22,7 @@
     activePaths,
   } from "./stores";
   import Two from "two.js";
-  import type { Path } from "two.js/src/path";
+  import type { Path as TwoPath } from "two.js/src/path";
   import type { Line as PathLine } from "two.js/src/shapes/line";
   import ControlTab from "./lib/ControlTab.svelte";
   import Navbar from "./lib/Navbar.svelte";
@@ -104,13 +105,15 @@
     generateGhostPathPoints,
     generateOnionLayers,
     getRandomColor,
-    normalizeLines,
+    normalizePaths,
     normalizeStartPose,
-    makeLineId,
-    createLine,
+    makePathId,
+    createSegment,
     downloadTrajectory,
     loadTrajectoryFromFile,
     updateRobotImageDisplay,
+    atomicSegments,
+    findSegmentById,
   } from "./utils";
   import {
     POINT_RADIUS,
@@ -120,7 +123,7 @@
     DEFAULT_SETTINGS,
     FIELD_SIZE,
     getDefaultStartPoint,
-    getDefaultLines,
+    getDefaultPaths,
     getDefaultShapes,
   } from "./config";
   import {
@@ -172,8 +175,8 @@
   // Path data
   let settings: Settings = $state({ ...DEFAULT_SETTINGS });
   let startPoint: StartPose = $state(getDefaultStartPoint());
-  const initialLines = normalizeLines(getDefaultLines());
-  let lines: Line[] = $state(initialLines);
+  const initialLines = normalizePaths(getDefaultPaths());
+  let lines: Path[] = $state(initialLines);
   let fieldPoints: FieldPoint[] = $state([]);
 
   function detectMobileDevice() {
@@ -197,7 +200,7 @@
   }
 
   let sequence: SequenceItem[] = $state(
-    initialLines.map((ln) => ({
+    atomicSegments(initialLines).map((ln) => ({
       kind: "path",
       lineId: ln.id,
     })),
@@ -253,7 +256,7 @@
 
   // Second path data (for alliance coordination) - DEPRECATED, use additionalPaths
   let secondStartPoint: StartPose | null = $state(null);
-  let secondLines: Line[] = $state([]);
+  let secondLines: Path[] = $state([]);
   let secondSequence: SequenceItem[] = $state([]);
   let secondShapes: Shape[] = $state([]);
 
@@ -261,7 +264,7 @@
   interface AdditionalPathData {
     filePath: string;
     startPoint: StartPose | null;
-    lines: Line[];
+    lines: Path[];
     sequence: SequenceItem[];
     shapes: Shape[];
     settings: Settings;
@@ -276,7 +279,7 @@
   const { canUndoStore, canRedoStore } = history;
 
   function commitPenStroke() {
-    const selectedLine = lines[selectedLineIndex];
+    const selectedLine = findSegmentById(lines, selectedLineId);
     const startAnchor = selectedLine?.endPoint || undefined;
     const fitted = fitStrokeToLines(
       penStroke,
@@ -299,7 +302,7 @@
         0,
         newLine,
       );
-      lines = normalizeLines(nextLines);
+      lines = normalizePaths(nextLines);
 
       const nextSequence = [...sequence];
       const seqIndex = sequence.findIndex(
@@ -316,8 +319,11 @@
       selectedPointIndex = 0;
     } else {
       startPoint = fitted.startPoint;
-      lines = normalizeLines(fitted.lines);
-      sequence = lines.map((line) => ({ kind: "path", lineId: line.id }));
+      lines = normalizePaths(fitted.lines);
+      sequence = atomicSegments(lines).map((line) => ({
+        kind: "path",
+        lineId: line.id,
+      }));
       selectedLineId = lines[0]?.id ?? null;
       selectedPointIndex = 0;
     }
@@ -513,7 +519,7 @@
         const data = JSON.parse(content);
 
         if (data.startPoint && data.lines) {
-          const normalizedLines = normalizeLines(data.lines || []);
+          const normalizedLines = normalizePaths(data.lines || []);
           newAdditionalPaths.push({
             filePath,
             startPoint: normalizeStartPose(data.startPoint),
@@ -521,7 +527,7 @@
             shapes: data.shapes || [],
             sequence:
               data.sequence ||
-              normalizedLines.map((ln: Line) => ({
+              atomicSegments(normalizedLines).map((ln) => ({
                 kind: "path",
                 lineId: ln.id,
               })),
@@ -1410,7 +1416,7 @@
       const inchY = clampFieldCoordinate(snapped.y);
 
       // Create a new line with endPoint at the clicked position
-      const newLine = createLine(inchX, inchY);
+      const newLine = createSegment(inchX, inchY);
 
       lines = [...lines, newLine];
       sequence = [...sequence, { kind: "path", lineId: newLine.id }];
@@ -1476,14 +1482,14 @@
       startPoint = normalizeStartPose(data.startPoint ?? { x: 72, y: 72 });
 
       // Normalize lines with all required fields
-      const normalizedLines = normalizeLines(data.lines || []);
+      const normalizedLines = normalizePaths(data.lines || []);
       lines = normalizedLines;
 
       // Derive sequence from data or create default
       sequence = (
         data.sequence && data.sequence.length
           ? data.sequence
-          : normalizedLines.map((ln) => ({
+          : atomicSegments(normalizedLines).map((ln) => ({
               kind: "path",
               lineId: ln.id,
             }))
@@ -1534,7 +1540,7 @@
 
     try {
       const payload = buildOptimizationPayload(
-        lineIndex,
+        lineId,
         startPoint,
         lines,
         shapes,
@@ -1543,13 +1549,13 @@
       const result = await runOptimization(payload);
       const newLines = applyOptimizedWaypoints(
         lines,
-        lineIndex,
+        lineId,
         result,
         targetControlPointIndex,
       );
 
       if (newLines) {
-        lines = normalizeLines(newLines);
+        lines = normalizePaths(newLines);
         recordChange();
       }
     } catch (err) {
@@ -1574,7 +1580,7 @@
   }
 
   function addNewLine() {
-    const newLine = createLine(_.random(36, 108), _.random(36, 108), {
+    const newLine = createSegment(_.random(36, 108), _.random(36, 108), {
       reverse: true,
     });
     const newLineId = newLine.id;
@@ -1585,9 +1591,16 @@
     recordChange();
   }
 
+  /** The drivable curve edits apply to: the selection, else the last one. */
+  function targetSegment() {
+    const leaves = atomicSegments(lines);
+    return findSegmentById(lines, selectedLineId) || leaves[leaves.length - 1];
+  }
+
   function addControlPoint() {
     if (lines.length > 0) {
-      const targetLine = lines[selectedLineIndex] || lines[lines.length - 1];
+      const targetLine = targetSegment();
+      if (!targetLine) return;
       targetLine.controlPoints.push({
         x: _.random(36, 108),
         y: _.random(36, 108),
@@ -1601,8 +1614,8 @@
 
   function removeControlPoint() {
     if (lines.length > 0) {
-      const targetLine = lines[selectedLineIndex] || lines[lines.length - 1];
-      if (targetLine.controlPoints.length > 0) {
+      const targetLine = targetSegment();
+      if (targetLine && targetLine.controlPoints.length > 0) {
         targetLine.controlPoints.pop();
         lines = [...lines];
         selectedPointIndex = Math.min(
@@ -1616,7 +1629,7 @@
   }
 
   function createPathBetweenSelectedPoints() {
-    const selected = lines[selectedLineIndex];
+    const selected = findSegmentById(lines, selectedLineId);
     if (!selected?.id || sequence.length === 0) return;
 
     const selectedSeqIndex = sequence.findIndex(
@@ -1635,8 +1648,9 @@
 
     const lastLine =
       lastPathSeqIndex >= 0
-        ? lines.find(
-            (line) => line.id === (sequence[lastPathSeqIndex] as any).lineId,
+        ? findSegmentById(
+            lines,
+            (sequence[lastPathSeqIndex] as SequencePathItem).lineId,
           )
         : null;
 
@@ -1651,7 +1665,7 @@
     };
     const midpointX = (Number(startPoint.x) + Number(endPoint.x)) / 2;
     const midpointY = (Number(startPoint.y) + Number(endPoint.y)) / 2;
-    const newLine = createLine(midpointX, midpointY);
+    const newLine = createSegment(midpointX, midpointY);
     const newLineId = newLine.id;
 
     const nextLines = [...lines];
@@ -1671,7 +1685,7 @@
   }
 
   function selectLinePoint(lineId: string | null, pointIndex = 0) {
-    const line = lines.find((entry) => entry.id === lineId);
+    const line = findSegmentById(lines, lineId);
     if (!line) return;
 
     selectedLineId = line.id;
@@ -1862,9 +1876,7 @@
       selectedLineId = lines[lines.length - 1].id;
     }
   });
-  let selectedLine = $derived(
-    lines.find((line) => line.id === selectedLineId) || null,
-  );
+  let selectedLine = $derived(findSegmentById(lines, selectedLineId));
   let selectedPoint = $derived.by(() => {
     const line = selectedLine;
     if (!line || selectedPointIndex < 0) return null;
@@ -1965,13 +1977,15 @@
     })(),
   );
   let pathPreviewItems = $derived(
-    lines.slice(0, 14).map((line, idx) => ({
-      index: idx + 1,
-      lineId: line.id,
-      name: line.name || `Path ${idx + 1}`,
-      x: formatPathPoint(line.endPoint.x),
-      y: formatPathPoint(line.endPoint.y),
-    })),
+    atomicSegments(lines)
+      .slice(0, 14)
+      .map((line, idx) => ({
+        index: idx + 1,
+        lineId: line.id,
+        name: line.name || `Path ${idx + 1}`,
+        x: formatPathPoint(line.endPoint.x),
+        y: formatPathPoint(line.endPoint.y),
+      })),
   );
   // Load additional paths when activePaths changes
   $effect.pre(() => {
@@ -2111,7 +2125,7 @@
           ),
     ),
   );
-  let penGhostPath: (Path | PathLine)[] = $derived.by(() => {
+  let penGhostPath: (TwoPath | PathLine)[] = $derived.by(() => {
     if (
       !penToolEnabled ||
       !penIsDrawing ||

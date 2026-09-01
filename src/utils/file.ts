@@ -1,7 +1,7 @@
 import type {
   FieldPoint,
   StartPose,
-  Line,
+  Path,
   Shape,
   SequenceItem,
 } from "../types";
@@ -12,7 +12,7 @@ import type {
 
 export interface SaveData {
   startPoint: StartPose;
-  lines: Line[];
+  lines: Path[];
   shapes?: Shape[];
   settings?: any;
   sequence?: SequenceItem[];
@@ -25,7 +25,7 @@ export interface SaveData {
  */
 export function downloadTrajectory(
   startPoint: StartPose,
-  lines: Line[],
+  lines: Path[],
   shapes: Shape[],
   sequence?: SequenceItem[],
   activePaths?: string[],

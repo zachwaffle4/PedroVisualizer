@@ -1,7 +1,7 @@
-import type { BasePoint, Line, StartPose } from "../../types";
+import type { AtomicPath, BasePoint, StartPose } from "../../types";
 import { clampFieldCoordinate, distanceBetweenPoints } from "../../utils/math";
 import { getRandomColor } from "../../utils/color";
-import { makeLineId } from "../../utils/ids";
+import { makePathId } from "../../utils/ids";
 
 /**
  * Distance from a point to the infinite line through lineStart/lineEnd.
@@ -137,7 +137,7 @@ export function fitStrokeToLines(
   stroke: BasePoint[],
   penToolAccuracy: number,
   startAnchor?: BasePoint,
-): { startPoint: StartPose; lines: Line[] } | null {
+): { startPoint: StartPose; lines: AtomicPath[] } | null {
   const cleanedStroke = dedupeStrokePoints(
     stroke.map((point) => ({
       x: clampFieldCoordinate(point.x),
@@ -168,9 +168,10 @@ export function fitStrokeToLines(
     maxControlPoints,
   );
 
-  const fittedLines: Line[] = [
+  const fittedLines: AtomicPath[] = [
     {
-      id: makeLineId(),
+      kind: "atomic",
+      id: makePathId(),
       name: "Path 1",
       endPoint: {
         x: strokePoints[strokePoints.length - 1].x,

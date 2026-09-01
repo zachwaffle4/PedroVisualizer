@@ -1,4 +1,5 @@
-import type { Line, SequenceItem, StartPose } from "../../types";
+import type { AtomicPath, Path, SequenceItem, StartPose } from "../../types";
+import { atomicSegments } from "../../utils/pathTraversal";
 import { headingAngleAt } from "../../utils/headingInterpolation";
 import { headingCall } from "./heading";
 import { IdentifierAllocator, toClassName } from "./identifiers";
@@ -13,7 +14,7 @@ import type {
 
 export interface BuildModelInput {
   startPoint: StartPose;
-  lines: Line[];
+  lines: Path[];
   sequence?: SequenceItem[];
   mirrorHorizontally?: boolean;
   className?: string | null;
@@ -22,12 +23,15 @@ export interface BuildModelInput {
 
 const DEFAULT_PACKAGE = "org.firstinspires.ftc.teamcode";
 
-export function lineId(line: Line, index: number): string {
+export function lineId(line: AtomicPath, index: number): string {
   return line.id || `line-${index + 1}`;
 }
 
 export function buildExportModel(input: BuildModelInput): ExportModel {
-  const { startPoint, lines } = input;
+  const { startPoint } = input;
+  // Groups are flattened for now: every drivable curve becomes its own method.
+  // Emitting Pedro's `path(...)` for a group is the next step.
+  const lines = atomicSegments(input.lines);
 
   const options: ExportOptions = {
     mirrorHorizontally: !!input.mirrorHorizontally,
@@ -157,7 +161,7 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
 }
 
 function buildSequence(
-  lines: Line[],
+  lines: AtomicPath[],
   paths: PathDecl[],
   methodNameByLineId: Map<string, string>,
   sequence: SequenceItem[] | undefined,

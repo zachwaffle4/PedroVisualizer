@@ -1,6 +1,6 @@
 import type {
   BasePoint,
-  Line,
+  Path,
   SequenceItem,
   Settings,
   StartPose,
@@ -38,16 +38,16 @@ export interface GifDurationInputs {
   hasDualPath: boolean;
   additionalPaths: {
     startPoint: StartPose | null;
-    lines: Line[];
+    lines: Path[];
     settings: Settings;
     sequence: SequenceItem[];
   }[];
   startPoint: StartPose;
-  lines: Line[];
+  lines: Path[];
   sequence: SequenceItem[];
   settings: Settings;
   secondStartPoint: StartPose | null;
-  secondLines: Line[];
+  secondLines: Path[];
   secondSequence: SequenceItem[];
 }
 

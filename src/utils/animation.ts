@@ -9,14 +9,15 @@ import { evaluatePiecewiseHeading } from "./headingInterpolation";
 import {
   CURVE_SAMPLES,
   approximateCurveLength,
+  findSegmentById,
   flattenToAtomicSegments,
   getChainTraversalState,
   getPointAndTangentAtProgress,
   lineCurvePoints,
-  segmentStartAt,
 } from "./pathTraversal";
 import type {
-  Line,
+  AtomicPath,
+  Path,
   TimelineEvent,
   BasePoint,
   Settings,
@@ -61,7 +62,7 @@ const CURVE_CACHE_LIMIT = 1024;
 
 function getCurveGeometry(
   start: BasePoint,
-  line: Line,
+  line: AtomicPath,
 ): { points: BasePoint[]; length: number } {
   const end = line.endPoint;
   const cps = line.controlPoints;
@@ -91,7 +92,7 @@ function getCurveGeometry(
 export function calculateRobotState(
   percent: number,
   timeline: TimelineEvent[],
-  lines: Line[],
+  lines: Path[],
   startPoint: StartPose,
   settings: Settings,
   xScale: ScaleLinear<number, number>,
@@ -142,12 +143,14 @@ export function calculateRobotState(
     };
   } else {
     // --- MOVEMENT TRAVEL ---
-    const lineIdx = lines.findIndex((line) => line.id === activeEvent.lineId);
-    const currentLine = lines[lineIdx];
-    const prevPoint = segmentStartAt(startPoint, lines, lineIdx);
-    if (!currentLine || !prevPoint) {
+    const segment = flattenToAtomicSegments(startPoint, lines).find(
+      (entry) => entry.line.id === activeEvent.lineId,
+    );
+    if (!segment) {
       return { x: xScale(startPoint.x), y: yScale(startPoint.y), heading: 0 };
     }
+    const currentLine = segment.line;
+    const prevPoint = segment.start;
 
     // Calculate progress (in seconds) within this specific travel event
     const timeIntoEvent = currentSeconds - activeEvent.startTime;
@@ -257,20 +260,17 @@ export function calculateRobotState(
       chainScoped && lineChain
         ? (() => {
             const chainLines = (lineChain.lineIds || [])
-              .map((lineId) => lines.find((line) => line.id === lineId))
-              .filter((line): line is Line => Boolean(line));
+              .map((lineId) => findSegmentById(lines, lineId))
+              .filter((line): line is AtomicPath => Boolean(line));
             const currentChainIndex = chainLines.findIndex(
               (line) => line.id === currentLine.id,
             );
             if (currentChainIndex < 0) return null;
 
-            const chainLengths = chainLines.map((line, index) => {
-              const start =
-                index === 0 ? startPoint : chainLines[index - 1].endPoint;
-              return approximateCurveLength(
-                lineCurvePoints(start, line) as BasePoint[],
-              );
-            });
+            const chainLengths = flattenToAtomicSegments(
+              startPoint,
+              chainLines,
+            ).map((entry) => entry.arcLength);
             const totalLength = chainLengths.reduce(
               (sum, value) => sum + value,
               0,
@@ -547,7 +547,7 @@ export function createAnimationController(
  * +x, measured in inches space).
  */
 function segmentHeadingAt(
-  line: Line,
+  line: AtomicPath,
   curvePoints: BasePoint[],
   t: number,
 ): number {
@@ -583,7 +583,7 @@ function segmentHeadingAt(
  */
 export function generateGhostPathPoints(
   startPoint: StartPose,
-  lines: Line[],
+  lines: Path[],
   robotWidth: number,
   robotHeight: number,
   samples: number = 200, // Higher default for smoother turns
@@ -722,7 +722,7 @@ export function generateGhostPathPoints(
  */
 export function generateOnionLayers(
   startPoint: StartPose,
-  lines: Line[],
+  lines: Path[],
   robotWidth: number,
   robotHeight: number,
   spacing: number = 6,

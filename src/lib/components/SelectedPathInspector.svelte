@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { BasePoint, Line, Settings } from "../../types";
+  import type { AtomicPath, BasePoint, Settings } from "../../types";
   import StatCell from "./ui/StatCell.svelte";
   import SelectedPointEditor from "./SelectedPointEditor.svelte";
 
   interface Props {
-    selectedLine: Line | null;
+    selectedLine: AtomicPath | null;
     selectedLinePathIndex: number;
     selectedPoint: BasePoint | null;
     selectedPointIndex: number;

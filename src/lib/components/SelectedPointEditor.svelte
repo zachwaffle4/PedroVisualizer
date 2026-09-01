@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { BasePoint, Line } from "../../types";
+  import type { AtomicPath, BasePoint } from "../../types";
   import { snapToGrid, showGrid, gridSize } from "../../stores";
   import { FIELD_SIZE } from "../../config";
   import HeadingControls from "./HeadingControls.svelte";
 
   interface Props {
-    selectedLine: Line;
+    selectedLine: AtomicPath;
     selectedPoint: BasePoint;
     selectedPointIndex: number;
     selectedPointLabel: string;

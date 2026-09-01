@@ -56,11 +56,8 @@ export interface WaitSegment {
   position?: "before" | "after";
 }
 
-export interface Line {
+export type Path = {
   id: string;
-  endPoint: Point;
-  controlPoints: ControlPoint[];
-  heading: Heading;
   color: string;
   name?: string;
   locked?: boolean;
@@ -70,7 +67,24 @@ export interface Line {
   waitAfterMs?: number;
   waitBeforeName?: string;
   waitAfterName?: string;
+} & (Atomic | Compound);
+
+export interface Atomic {
+  kind: "atomic";
+  endPoint: Point;
+  controlPoints: ControlPoint[];
+  heading: Heading;
 }
+
+export type AtomicPath = Extract<Path, Atomic>;
+
+export interface Compound {
+  kind: "compound";
+  segments: Path[];
+  heading?: Heading;
+}
+
+export type CompoundPath = Extract<Path, Compound>;
 
 export type SequencePathItem = {
   kind: "path";

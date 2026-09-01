@@ -1,7 +1,7 @@
 import Two from "two.js";
-import type { Path } from "two.js/src/path";
+import type { Path as TwoPath } from "two.js/src/path";
 import type { Line as PathLine } from "two.js/src/shapes/line";
-import type { BasePoint, Line, Settings } from "../../types";
+import type { AtomicPath, BasePoint, Settings } from "../../types";
 import { getCurvePoint, quadraticToCubic } from "../../utils/math";
 import {
   CURVE_SAMPLES,
@@ -13,9 +13,9 @@ import type { PathRenderSpec, SceneScales } from "./types";
 
 export function buildSegmentPath(
   startPoint: BasePoint,
-  line: Line,
+  line: AtomicPath,
   { x, y }: SceneScales,
-): Path | PathLine {
+): TwoPath | PathLine {
   if (line.controlPoints.length > 2) {
     // Approximate an n-degree bezier curve by sampling it
     const cps = [startPoint, ...line.controlPoints, line.endPoint];
@@ -89,11 +89,11 @@ export function buildPathElements(
   settings: Settings,
   registry?: PointRegistry,
   container: PointContainer = "main",
-): (Path | PathLine)[] {
+): (TwoPath | PathLine)[] {
   const { startPoint, lines, idPrefix, color, honorLocked = true } = spec;
   const opacityScale = spec.opacityScale ?? 1;
   const baseOpacity = (settings.pathOpacity || 1.0) * opacityScale;
-  const elements: (Path | PathLine)[] = [];
+  const elements: (TwoPath | PathLine)[] = [];
 
   flattenToAtomicSegments(startPoint, lines).forEach(
     ({ line, index: idx, start: segmentStart }) => {

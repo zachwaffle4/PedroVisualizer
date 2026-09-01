@@ -1,4 +1,10 @@
-import type { BasePoint, Line, PathChain } from "../types";
+import type {
+  AtomicPath,
+  BasePoint,
+  CompoundPath,
+  Path,
+  PathChain,
+} from "../types";
 import { clamp, getCurvePoint, radiansToDegrees } from "./math";
 
 /** Sample count used when approximating a curve's arc length. */
@@ -7,7 +13,7 @@ export const CURVE_SAMPLES = 100;
 /** The bezier control polygon for one segment, given where it starts. */
 export function lineCurvePoints(
   startPoint: BasePoint,
-  line: Line,
+  line: AtomicPath,
 ): BasePoint[] {
   return [startPoint, ...line.controlPoints, line.endPoint];
 }
@@ -69,9 +75,9 @@ export function getPointAndTangentAtProgress(
 
 /** One drivable curve, resolved out of the path structure. */
 export interface FlatSegment {
-  /** The segment this came from. */
-  line: Line;
-  /** Position in the flattened order. */
+  /** The atomic path this came from. */
+  line: AtomicPath;
+  /** Position in the flattened order, counting leaves only. */
   index: number;
   /** Where the segment begins: the previous segment's end, or the path start. */
   start: BasePoint;
@@ -79,6 +85,11 @@ export interface FlatSegment {
   points: BasePoint[];
   /** Approximate arc length in inches, computed on first access. */
   readonly arcLength: number;
+  /**
+   * The groups containing this segment, outermost first. Empty for a segment
+   * at the top level.
+   */
+  ancestors: CompoundPath[];
 }
 
 /**
@@ -94,45 +105,99 @@ export interface FlatSegment {
  */
 export function flattenToAtomicSegments(
   startPoint: BasePoint,
-  lines: Line[],
+  paths: Path[],
 ): FlatSegment[] {
   const segments: FlatSegment[] = [];
   let start: BasePoint = startPoint;
 
-  lines.forEach((line, index) => {
-    if (!line || !line.endPoint) return;
+  const walk = (nodes: Path[], ancestors: CompoundPath[]) => {
+    for (const node of nodes) {
+      if (!node) continue;
 
-    const points = lineCurvePoints(start, line);
-    let measured: number | null = null;
+      if (node.kind === "compound") {
+        walk(node.segments, [...ancestors, node]);
+        continue;
+      }
+      if (!node.endPoint) continue;
 
-    segments.push({
-      line,
-      index,
-      start,
-      points,
-      get arcLength() {
-        if (measured === null) measured = approximateCurveLength(points);
-        return measured;
-      },
-    });
+      const points = lineCurvePoints(start, node);
+      let measured: number | null = null;
 
-    start = line.endPoint;
-  });
+      segments.push({
+        line: node,
+        index: segments.length,
+        start,
+        points,
+        get arcLength() {
+          if (measured === null) measured = approximateCurveLength(points);
+          return measured;
+        },
+        ancestors,
+      });
 
+      start = node.endPoint;
+    }
+  };
+
+  walk(paths, []);
   return segments;
 }
 
 /**
- * Where a single segment begins, without walking the whole path. Same rule as
- * `flattenToAtomicSegments`, kept separate so hot paths stay O(1).
+ * Where a given segment begins. Addressed by id because a nested segment has
+ * no single position in the top-level array.
  */
-export function segmentStartAt(
+export function segmentStartById(
   startPoint: BasePoint,
-  lines: Line[],
-  index: number,
+  paths: Path[],
+  lineId: string | null,
 ): BasePoint | null {
-  if (index <= 0) return startPoint;
-  return lines[index - 1]?.endPoint ?? null;
+  if (!lineId) return null;
+  const segments = flattenToAtomicSegments(startPoint, paths);
+  return segments.find((segment) => segment.line.id === lineId)?.start ?? null;
+}
+
+/** Every drivable segment in a path tree, in the order they are driven. */
+export function atomicSegments(paths: Path[]): AtomicPath[] {
+  return paths.flatMap((path) =>
+    path.kind === "compound" ? atomicSegments(path.segments) : [path],
+  );
+}
+
+/** Find a segment anywhere in the tree by its id. */
+export function findSegmentById(
+  paths: Path[],
+  lineId: string | null,
+): AtomicPath | null {
+  if (!lineId) return null;
+  return atomicSegments(paths).find((path) => path.id === lineId) ?? null;
+}
+
+/**
+ * Replace one segment wherever it sits, rebuilding only the groups on the way
+ * down to it. Returns the original array when the id is not found, so callers
+ * can treat an unchanged reference as "no such segment".
+ */
+export function replaceSegment(
+  paths: Path[],
+  lineId: string,
+  update: (segment: AtomicPath) => AtomicPath,
+): Path[] {
+  let changed = false;
+
+  const walk = (nodes: Path[]): Path[] =>
+    nodes.map((node) => {
+      if (node.kind === "compound") {
+        const segments = walk(node.segments);
+        return segments === node.segments ? node : { ...node, segments };
+      }
+      if (node.id !== lineId) return node;
+      changed = true;
+      return update(node);
+    });
+
+  const next = walk(paths);
+  return changed ? next : paths;
 }
 
 /**
@@ -141,13 +206,13 @@ export function segmentStartAt(
  */
 export function getChainTraversalState(
   chain: PathChain,
-  lines: Line[],
+  lines: Path[],
   startPoint: BasePoint,
   progress: number,
 ): { point: BasePoint; tangentDegrees: number } {
   const chainLines = chain.lineIds
     .map((lineId) => lines.find((line) => line.id === lineId))
-    .filter((line): line is Line => Boolean(line));
+    .filter((line): line is Path => Boolean(line));
 
   if (chainLines.length === 0) {
     return getPointAndTangentAtProgress([startPoint, startPoint], 0);

@@ -7,7 +7,7 @@
     FileInfo,
     FieldPoint,
     Heading,
-    Line,
+    Path,
     Shape,
     SequenceItem,
     StartPose,
@@ -21,7 +21,7 @@
   } from "../stores";
   import { normalizeFieldPoints } from "../utils/fieldPoints";
   import {
-    normalizeLines,
+    normalizePaths,
     normalizeStartPose,
     deriveSequence,
   } from "../utils/normalize";
@@ -37,11 +37,11 @@
   interface Props {
     isOpen?: boolean;
     startPoint: StartPose;
-    lines: Line[];
+    lines: Path[];
     shapes: Shape[];
     sequence: SequenceItem[];
     secondStartPoint?: StartPose | null;
-    secondLines?: Line[];
+    secondLines?: Path[];
     secondShapes?: Shape[];
     secondSequence?: SequenceItem[];
     fieldPoints?: FieldPoint[];
@@ -242,7 +242,7 @@
         throw new Error("Invalid file format: missing required fields");
       }
 
-      const normalizedLines = normalizeLines(data.lines || []);
+      const normalizedLines = normalizePaths(data.lines || []);
       return {
         startPoint: normalizeStartPose(data.startPoint),
         lines: normalizedLines,
@@ -423,7 +423,7 @@
         }
       }
 
-      const normalizedLines = normalizeLines(lines);
+      const normalizedLines = normalizePaths(lines);
       const content = serializeProject({
         startPoint,
         lines: normalizedLines,
@@ -542,7 +542,7 @@
 
       const newFilePath = newFileName;
 
-      const normalizedLines = normalizeLines(data.lines || []);
+      const normalizedLines = normalizePaths(data.lines || []);
       const sequenceData = deriveSequence(data, normalizedLines);
       await browserFileStore.writeFile(
         newFilePath,
@@ -583,7 +583,7 @@
       const data = JSON.parse(content);
 
       // normalize before mirroring
-      data.lines = normalizeLines(data.lines || []);
+      data.lines = normalizePaths(data.lines || []);
       data.startPoint = normalizeStartPose(data.startPoint ?? {});
 
       const mirroredData = mirrorPathData(data);
@@ -717,24 +717,33 @@
       mirrored.startPoint.headingDeg = 180 - mirrored.startPoint.headingDeg;
     }
 
-    // Mirror lines
-    if (mirrored.lines && Array.isArray(mirrored.lines)) {
-      mirrored.lines.forEach((line: Line) => {
-        // Mirror end point
-        if (line.endPoint) {
-          line.endPoint.x = FIELD_SIZE - line.endPoint.x;
+    // Mirror lines, descending into groups so nested segments are mirrored too
+    const mirrorPaths = (paths: Path[]) => {
+      paths.forEach((path) => {
+        if (path.heading) {
+          path.heading = mirrorHeading(path.heading);
         }
-        if (line.heading) {
-          line.heading = mirrorHeading(line.heading);
+
+        if (path.kind === "compound") {
+          mirrorPaths(path.segments);
+          return;
+        }
+
+        // Mirror end point
+        if (path.endPoint) {
+          path.endPoint.x = FIELD_SIZE - path.endPoint.x;
         }
 
         // Mirror control points
-        if (line.controlPoints && Array.isArray(line.controlPoints)) {
-          line.controlPoints.forEach((controlPoint: any) => {
+        if (path.controlPoints && Array.isArray(path.controlPoints)) {
+          path.controlPoints.forEach((controlPoint) => {
             controlPoint.x = FIELD_SIZE - controlPoint.x;
           });
         }
       });
+    };
+    if (mirrored.lines && Array.isArray(mirrored.lines)) {
+      mirrorPaths(mirrored.lines);
     }
 
     // Don't mirror shapes/obstacles - they should remain in their original positions
