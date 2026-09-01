@@ -1,25 +1,12 @@
-import type { Line, Point, Settings, Shape } from "../../types";
+import type { Line, Settings, Shape, StartPose } from "../../types";
 import { FIELD_SIZE } from "../../config/defaults";
+import { headingAngleAt } from "../../utils/headingInterpolation";
 
 export const OPTIMIZER_BASE_URL = "https://fpa.pedropathing.com";
 
-export function toHeadingDegrees(
-  point: Point,
-  position: "start" | "end",
-): number {
-  if (!point) return 0;
-  if (point.heading === "linear") {
-    return position === "start" ? (point.startDeg ?? 0) : (point.endDeg ?? 0);
-  }
-  if (point.heading === "constant") {
-    return point.degrees ?? 0;
-  }
-  return 0;
-}
-
 export function buildOptimizationPayload(
   lineIndex: number,
-  startPoint: Point,
+  startPoint: StartPose,
   lines: Line[],
   shapes: Shape[],
   settings: Settings,
@@ -37,8 +24,8 @@ export function buildOptimizationPayload(
 
   return {
     waypoints,
-    start_heading_degrees: toHeadingDegrees(startPt, "start"),
-    end_heading_degrees: toHeadingDegrees(line.endPoint, "end"),
+    start_heading_degrees: headingAngleAt(line.heading, "start"),
+    end_heading_degrees: headingAngleAt(line.heading, "end"),
     x_velocity: settings.xVelocity,
     y_velocity: settings.yVelocity,
     angular_velocity: settings.aVelocity,
@@ -48,9 +35,9 @@ export function buildOptimizationPayload(
     min_coord_field: 0,
     max_coord_field: FIELD_SIZE,
     interpolation:
-      line.endPoint.heading === "tangential"
+      line.heading.type === "tangential"
         ? "tangent"
-        : line.endPoint.heading === "constant"
+        : line.heading.type === "constant"
           ? "constant"
           : "linear",
     obstacles: shapes.map((shape) => shape.vertices.map((v) => [v.x, v.y])),

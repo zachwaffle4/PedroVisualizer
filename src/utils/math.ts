@@ -144,13 +144,14 @@ export function getLineStartHeading(
 ): number {
   if (!line || !line.endPoint) return 0;
 
-  if (line.endPoint.heading === "constant") return line.endPoint.degrees;
-  if (line.endPoint.heading === "linear") return line.endPoint.startDeg;
-  if (line.endPoint.heading === "tangential") {
+  const heading = line.heading;
+  if (heading.type === "constant") return heading.degrees;
+  if (heading.type === "linear") return heading.startDeg;
+  if (heading.type === "tangential") {
     const nextP =
       line.controlPoints.length > 0 ? line.controlPoints[0] : line.endPoint;
     const angle = getTangentAngle(previousPoint, nextP);
-    return line.endPoint.reverse
+    return heading.reverse
       ? transformAngle(angle + 180)
       : transformAngle(angle);
   }
@@ -163,15 +164,16 @@ export function getLineEndHeading(
 ): number {
   if (!line || !line.endPoint) return 0;
 
-  if (line.endPoint.heading === "constant") return line.endPoint.degrees;
-  if (line.endPoint.heading === "linear") return line.endPoint.endDeg;
-  if (line.endPoint.heading === "tangential") {
+  const heading = line.heading;
+  if (heading.type === "constant") return heading.degrees;
+  if (heading.type === "linear") return heading.endDeg;
+  if (heading.type === "tangential") {
     const prevP =
       line.controlPoints.length > 0
         ? line.controlPoints[line.controlPoints.length - 1]
         : previousPoint;
     const angle = getTangentAngle(prevP, line.endPoint);
-    return line.endPoint.reverse
+    return heading.reverse
       ? transformAngle(angle + 180)
       : transformAngle(angle);
   }

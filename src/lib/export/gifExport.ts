@@ -1,9 +1,9 @@
 import type {
   BasePoint,
   Line,
-  Point,
   SequenceItem,
   Settings,
+  StartPose,
 } from "../../types";
 import { calculatePathTime } from "../../utils/timeCalculator";
 import { pathStem } from "../../utils/filename";
@@ -37,16 +37,16 @@ export interface GifDurationInputs {
   hasActivePaths: boolean;
   hasDualPath: boolean;
   additionalPaths: {
-    startPoint: Point | null;
+    startPoint: StartPose | null;
     lines: Line[];
     settings: Settings;
     sequence: SequenceItem[];
   }[];
-  startPoint: Point;
+  startPoint: StartPose;
   lines: Line[];
   sequence: SequenceItem[];
   settings: Settings;
-  secondStartPoint: Point | null;
+  secondStartPoint: StartPose | null;
   secondLines: Line[];
   secondSequence: SequenceItem[];
 }

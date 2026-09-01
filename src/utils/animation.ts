@@ -6,6 +6,7 @@ import {
 } from "./math";
 import { getRobotCorners } from "./geometry";
 import {
+  CURVE_SAMPLES,
   approximateCurveLength,
   evaluatePiecewiseHeading,
   getChainTraversalState,
@@ -14,12 +15,12 @@ import {
   normalizePiecewiseHeadingInterpolation,
 } from "./headingInterpolation";
 import type {
-  Point,
   Line,
   TimelineEvent,
   BasePoint,
   Settings,
   PathChain,
+  StartPose,
 } from "../types";
 import type { ScaleLinear } from "d3";
 
@@ -90,7 +91,7 @@ export function calculateRobotState(
   percent: number,
   timeline: TimelineEvent[],
   lines: Line[],
-  startPoint: Point,
+  startPoint: StartPose,
   settings: Settings,
   xScale: ScaleLinear<number, number>,
   yScale: ScaleLinear<number, number>,
@@ -232,15 +233,16 @@ export function calculateRobotState(
     const lineChain = pathChains.find((chain) =>
       (chain.lineIds || []).includes(currentLine.id || ""),
     );
+    const lineHeading = currentLine.heading;
     const lineTraversal = getPointAndTangentAtProgress(
       curvePoints as BasePoint[],
       linePercent,
-      currentLine.endPoint.reverse,
+      lineHeading.type === "tangential" ? lineHeading.reverse : undefined,
     );
     const globalPiecewise =
-      currentLine.endPoint.heading === "piecewise" &&
-      (currentLine.endPoint.piecewiseHeading.scope || "path") === "path"
-        ? currentLine.endPoint.piecewiseHeading
+      lineHeading.type === "piecewise" &&
+      (lineHeading.piecewiseHeading.scope || "path") === "path"
+        ? lineHeading.piecewiseHeading
         : lineChain?.globalHeadingInterpolation;
 
     const chainTraversal =
@@ -302,20 +304,20 @@ export function calculateRobotState(
         },
       );
     } else {
-      switch (currentLine.endPoint.heading) {
+      switch (lineHeading.type) {
         case "linear":
           robotHeading = -shortestRotation(
-            currentLine.endPoint.startDeg,
-            currentLine.endPoint.endDeg,
+            lineHeading.startDeg,
+            lineHeading.endDeg,
             linePercent,
           );
           break;
         case "constant":
-          robotHeading = -currentLine.endPoint.degrees;
+          robotHeading = -lineHeading.degrees;
           break;
         case "tangential": {
           const nextPointInches = getCurvePoint(
-            linePercent + (currentLine.endPoint.reverse ? -0.01 : 0.01),
+            linePercent + (lineHeading.reverse ? -0.01 : 0.01),
             curvePoints,
           );
           const nextPoint = {
@@ -548,7 +550,7 @@ export function createAnimationController(
  * @returns Array of points forming the boundary of the robot's swept path
  */
 export function generateGhostPathPoints(
-  startPoint: Point,
+  startPoint: StartPose,
   lines: Line[],
   robotWidth: number,
   robotHeight: number,
@@ -564,16 +566,12 @@ export function generateGhostPathPoints(
     right: BasePoint;
   }> = [];
 
-  let currentLineStart = startPoint;
+  let currentLineStart: BasePoint = startPoint;
 
   // For each line segment
   for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
     const line = lines[lineIdx];
-    const curvePoints = [
-      currentLineStart,
-      ...line.controlPoints,
-      line.endPoint,
-    ];
+    const curvePoints = lineCurvePoints(currentLineStart, line);
 
     // Sample along this line segment with a minimum to better capture curves
     const samplesPerLine = Math.max(10, Math.ceil(samples / lines.length));
@@ -583,15 +581,15 @@ export function generateGhostPathPoints(
 
       // Calculate heading at this position
       let heading = 0;
-      if (line.endPoint.heading === "linear") {
+      if (line.heading.type === "linear") {
         heading = shortestRotation(
-          line.endPoint.startDeg,
-          line.endPoint.endDeg,
+          line.heading.startDeg,
+          line.heading.endDeg,
           t,
         );
-      } else if (line.endPoint.heading === "constant") {
-        heading = line.endPoint.degrees;
-      } else if (line.endPoint.heading === "tangential") {
+      } else if (line.heading.type === "constant") {
+        heading = line.heading.degrees;
+      } else if (line.heading.type === "tangential") {
         // Calculate tangent direction
         const nextT = Math.min(t + 0.01, 1);
         const nextPos = getCurvePoint(nextT, curvePoints);
@@ -715,7 +713,7 @@ export function generateGhostPathPoints(
  * @returns Array of robot states with corner points for rendering
  */
 export function generateOnionLayers(
-  startPoint: Point,
+  startPoint: StartPose,
   lines: Line[],
   robotWidth: number,
   robotHeight: number,
@@ -739,36 +737,15 @@ export function generateOnionLayers(
 
   // Calculate total path length
   let totalLength = 0;
-  let currentLineStart = startPoint;
+  let currentLineStart: BasePoint = startPoint;
 
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li];
-    const curvePoints = [
-      currentLineStart,
-      ...line.controlPoints,
-      line.endPoint,
-    ];
+    const curvePoints = lineCurvePoints(currentLineStart, line);
 
-    // Approximate line length by sampling
-    const samples = 100;
-    let lineLength = 0;
-    let prevPos = curvePoints[0];
-
-    for (let i = 1; i <= samples; i++) {
-      const t = i / samples;
-      const pos = getCurvePoint(t, curvePoints);
-      const dx = pos.x - prevPos.x;
-      const dy = pos.y - prevPos.y;
-      lineLength += Math.sqrt(dx * dx + dy * dy);
-      prevPos = pos;
-    }
-
-    totalLength += lineLength;
+    totalLength += approximateCurveLength(curvePoints, CURVE_SAMPLES);
     currentLineStart = line.endPoint;
   }
-
-  // Calculate number of layers based on spacing
-  const numLayers = Math.max(1, Math.floor(totalLength / spacing));
 
   // Sample robot positions at regular intervals
   currentLineStart = startPoint;
@@ -777,17 +754,12 @@ export function generateOnionLayers(
 
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li];
-    const curvePoints = [
-      currentLineStart,
-      ...line.controlPoints,
-      line.endPoint,
-    ];
-    const samples = 100;
+    const curvePoints = lineCurvePoints(currentLineStart, line);
     let prevPos = curvePoints[0];
     let prevT = 0;
 
-    for (let i = 1; i <= samples; i++) {
-      const t = i / samples;
+    for (let i = 1; i <= CURVE_SAMPLES; i++) {
+      const t = i / CURVE_SAMPLES;
       const pos = getCurvePoint(t, curvePoints);
       const dx = pos.x - prevPos.x;
       const dy = pos.y - prevPos.y;
@@ -808,20 +780,18 @@ export function generateOnionLayers(
 
         // Calculate heading for this position
         let heading = 0;
-        if (line.endPoint.heading === "linear") {
+        if (line.heading.type === "linear") {
           heading = shortestRotation(
-            line.endPoint.startDeg,
-            line.endPoint.endDeg,
+            line.heading.startDeg,
+            line.heading.endDeg,
             layerT,
           );
-        } else if (line.endPoint.heading === "constant") {
-          heading = -line.endPoint.degrees;
-        } else if (line.endPoint.heading === "tangential") {
+        } else if (line.heading.type === "constant") {
+          heading = -line.heading.degrees;
+        } else if (line.heading.type === "tangential") {
           // Calculate tangent direction
-          const nextT = Math.min(
-            layerT + (line.endPoint.reverse ? -0.01 : 0.01),
-            1,
-          );
+          const reverse = line.heading.reverse;
+          const nextT = Math.min(layerT + (reverse ? -0.01 : 0.01), 1);
           const nextPos = getCurvePoint(nextT, curvePoints);
           const tdx = nextPos.x - robotPosInches.x;
           const tdy = nextPos.y - robotPosInches.y;

@@ -1,5 +1,5 @@
-import type { Point, Line, Shape, Settings } from "../types";
-import { getRandomColor } from "../utils/color";
+import type { StartPose, Line, Shape, Settings } from "../types";
+import { makeLineId } from "../utils/ids";
 
 /**
  * Default robot dimensions
@@ -64,13 +64,11 @@ export const DEFAULT_SETTINGS: Settings = {
 /**
  * Get default starting point
  */
-export function getDefaultStartPoint(): Point {
+export function getDefaultStartPoint(): StartPose {
   return {
     x: 56,
     y: 8,
-    heading: "linear",
-    startDeg: 90,
-    endDeg: 180,
+    headingDeg: 90,
     locked: false,
   };
 }
@@ -81,10 +79,11 @@ export function getDefaultStartPoint(): Point {
 export function getDefaultLines(): Line[] {
   return [
     {
-      id: `line-${Math.random().toString(36).slice(2)}`,
+      id: makeLineId(),
       name: "Path 1",
-      endPoint: { x: 56, y: 36, heading: "linear", startDeg: 90, endDeg: 180 },
+      endPoint: { x: 56, y: 36 },
       controlPoints: [],
+      heading: { type: "linear", startDeg: 90, endDeg: 180 },
       color: "#ffc516",
       locked: false,
       waitBeforeMs: 0,

@@ -1,19 +1,29 @@
-import type { Line, Point, SequenceItem, Settings, Shape } from "../../types";
+import type {
+  Line,
+  SequenceItem,
+  Settings,
+  Shape,
+  StartPose,
+} from "../../types";
 import { DEFAULT_SETTINGS } from "../../config/defaults";
-import { deriveSequence, normalizeLines } from "../../utils/normalize";
+import {
+  deriveSequence,
+  normalizeLines,
+  normalizeStartPose,
+} from "../../utils/normalize";
 import { normalizeLegacyFieldMap } from "../../utils/settingsPersistence";
 
 export const SESSION_RECOVERY_KEY = "pedro_session_recovery_v1";
 
 export interface SessionSnapshot {
-  startPoint: Point;
+  startPoint: StartPose;
   lines: Line[];
   sequence: SequenceItem[];
   shapes: Shape[];
   settings: Settings;
   currentFilePath: string | null;
   secondFilePath: string | null;
-  secondStartPoint: Point | null;
+  secondStartPoint: StartPose | null;
   secondLines: Line[];
   secondSequence: SequenceItem[];
   secondShapes: Shape[];
@@ -47,7 +57,7 @@ export function loadSessionSnapshot(): SessionSnapshot | null {
     const secondLines = normalizeLines(parsed.secondLines || []);
 
     return {
-      startPoint: parsed.startPoint,
+      startPoint: normalizeStartPose(parsed.startPoint),
       lines,
       sequence: deriveSequence(parsed, lines),
       shapes: parsed.shapes || [],
@@ -57,7 +67,9 @@ export function loadSessionSnapshot(): SessionSnapshot | null {
       }),
       currentFilePath: parsed.currentFilePath || null,
       secondFilePath: parsed.secondFilePath || null,
-      secondStartPoint: parsed.secondStartPoint || null,
+      secondStartPoint: parsed.secondStartPoint
+        ? normalizeStartPose(parsed.secondStartPoint)
+        : null,
       secondLines,
       secondSequence: deriveSequence(
         { sequence: parsed.secondSequence },

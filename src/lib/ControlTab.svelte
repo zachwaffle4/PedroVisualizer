@@ -2,12 +2,12 @@
   import { run } from "svelte/legacy";
 
   import type {
-    Point,
     Line,
     BasePoint,
     Settings,
     Shape,
     SequenceItem,
+    StartPose,
   } from "../types";
   import type * as d3 from "d3";
   import ObstaclesSection from "./components/ObstaclesSection.svelte";
@@ -23,7 +23,7 @@
     playing: boolean;
     play: () => any;
     pause: () => any;
-    startPoint: Point;
+    startPoint: StartPose;
     lines: Line[];
     sequence: SequenceItem[];
     selectedLineIndex?: number;

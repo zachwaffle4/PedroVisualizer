@@ -1,5 +1,6 @@
 import type {
   BasePoint,
+  Heading,
   Line,
   PiecewiseHeadingInterpolation,
   PiecewiseHeadingInterpolationType,
@@ -7,6 +8,7 @@ import type {
   PathChain,
 } from "../types";
 import {
+  clamp,
   getCurvePoint,
   interpolateAngleDegrees,
   normalizeAngleDegrees,
@@ -15,8 +17,47 @@ import {
 
 const MIN_SEGMENT_LENGTH = 0.0001;
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
+/** Sample count used when approximating a curve's arc length. */
+export const CURVE_SAMPLES = 100;
+
+/**
+ * The single angle a heading rule resolves to at one end of its segment.
+ *
+ * Tangential headings have no fixed angle without the surrounding geometry, so
+ * they resolve to 0 here; callers that need the real tangent (the time
+ * calculator) use `getLineStartHeading` / `getLineEndHeading` in ./math, which
+ * take the neighbouring points into account.
+ */
+export function headingAngleAt(
+  heading: Heading,
+  role: "start" | "end",
+): number {
+  switch (heading.type) {
+    case "constant":
+      return heading.degrees;
+    case "linear":
+      return role === "start" ? heading.startDeg : heading.endDeg;
+    case "tangential":
+      return 0;
+    case "piecewise":
+      return piecewiseEdgeHeading(heading.piecewiseHeading, role);
+  }
+}
+
+function piecewiseEdgeHeading(
+  interpolation: PiecewiseHeadingInterpolation,
+  role: "start" | "end",
+): number {
+  const segments = interpolation?.segments ?? [];
+  const segment =
+    role === "start" ? segments[0] : segments[segments.length - 1];
+  const parameters = segment?.parameters;
+  if (!parameters) return 0;
+  if (segment.interpolationType === "constant") return parameters.degrees ?? 0;
+  if (segment.interpolationType === "linear") {
+    return (role === "start" ? parameters.startDeg : parameters.endDeg) ?? 0;
+  }
+  return 0;
 }
 
 function clonePoint(point?: BasePoint): BasePoint | undefined {
@@ -223,10 +264,6 @@ export function validatePiecewiseHeadingInterpolation(
 
 export function degreesToRadians(degrees: number): number {
   return (normalizeAngleDegrees(degrees) * Math.PI) / 180;
-}
-
-export function toDegreesDisplay(value: number): number {
-  return normalizeAngleDegrees(value);
 }
 
 export function lineCurvePoints(

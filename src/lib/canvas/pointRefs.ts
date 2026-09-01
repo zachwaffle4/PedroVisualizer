@@ -1,15 +1,15 @@
-import type { BasePoint, Line, Point, Shape } from "../../types";
+import type { BasePoint, Line, Point, Shape, StartPose } from "../../types";
 import { FIELD_SIZE } from "../../config/defaults";
 
 /** Which state container a dragged point lives in, so callers know what to reassign. */
 export type PointContainer = "shapes" | "second" | "additional" | "main";
 
 export interface PointRefContext {
-  startPoint: Point;
+  startPoint: StartPose;
   lines: Line[];
-  secondStartPoint: Point | null;
+  secondStartPoint: StartPose | null;
   secondLines: Line[];
-  additionalPaths: { startPoint: Point | null; lines: Line[] }[];
+  additionalPaths: { startPoint: StartPose | null; lines: Line[] }[];
   shapes: Shape[];
   obstaclesEnabled: boolean;
 }
@@ -23,7 +23,8 @@ export interface PointRef {
 
 function pointInLines(
   lines: Line[],
-  startPoint: Point | null,
+  // Only the coordinates and lock state are needed here, so any point will do.
+  startPoint: BasePoint | null,
   lineIndex: number,
   pointIndex: number,
 ): { point: BasePoint; locked: boolean } | null {

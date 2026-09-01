@@ -1,38 +1,62 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import { createDefaultPiecewiseHeadingInterpolation } from "../../utils/headingInterpolation";
+  import type {
+    Heading,
+    HeadingType,
+    PiecewiseHeadingInterpolation,
+  } from "../../types";
+
   interface Props {
-    endPoint: any;
+    heading: Heading;
     locked?: boolean;
   }
 
-  let { endPoint = $bindable(), locked = false }: Props = $props();
+  let { heading = $bindable(), locked = false }: Props = $props();
   const dispatch = createEventDispatcher();
-</script>
 
-<select
-  bind:value={endPoint.heading}
-  onchange={() => {
+  /**
+   * A mutable editing view of a Heading.
+   */
+  type HeadingDraft = {
+    type: HeadingType;
+    startDeg?: number;
+    endDeg?: number;
+    degrees?: number;
+    reverse?: boolean;
+    piecewiseHeading?: PiecewiseHeadingInterpolation;
+  };
+
+  function changeHeadingType(next: HeadingType) {
+    const draft: HeadingDraft = heading;
+    draft.type = next;
+
     // Initialize missing properties based on the selected heading type
-    if (endPoint.heading === "constant" && endPoint.degrees === undefined) {
-      endPoint.degrees = 0;
-    } else if (endPoint.heading === "linear") {
-      if (endPoint.startDeg === undefined) endPoint.startDeg = 0;
-      if (endPoint.endDeg === undefined) endPoint.endDeg = 0;
-    } else if (endPoint.heading === "tangential") {
-      if (endPoint.reverse === undefined) endPoint.reverse = false;
-    } else if (endPoint.heading === "piecewise") {
-      if (!endPoint.piecewiseHeading) {
-        endPoint.piecewiseHeading =
+    if (next === "constant" && draft.degrees === undefined) {
+      draft.degrees = 0;
+    } else if (next === "linear") {
+      if (draft.startDeg === undefined) draft.startDeg = 0;
+      if (draft.endDeg === undefined) draft.endDeg = 0;
+    } else if (next === "tangential") {
+      if (draft.reverse === undefined) draft.reverse = false;
+    } else if (next === "piecewise") {
+      if (!draft.piecewiseHeading) {
+        draft.piecewiseHeading =
           createDefaultPiecewiseHeadingInterpolation("path");
       }
     }
     dispatch("change");
-  }}
+  }
+</script>
+
+<select
+  value={heading.type}
+  onchange={(event) =>
+    changeHeadingType(event.currentTarget.value as HeadingType)}
   class=" rounded-md bg-neutral-100 dark:bg-neutral-950 dark:border-neutral-700 border-[0.5px] focus:outline-none w-28 text-sm"
-  title="The heading style of the robot. 
-With constant heading, the robot maintains the same heading throughout the line. 
-With linear heading, heading changes linearly between given start and end angles. 
+  title="The heading style of the robot.
+With constant heading, the robot maintains the same heading throughout the line.
+With linear heading, heading changes linearly between given start and end angles.
 With tangential heading, the heading follows the direction of the line."
   disabled={locked}
 >
@@ -42,7 +66,7 @@ With tangential heading, the heading follows the direction of the line."
   <option value="piecewise">Piecewise</option>
 </select>
 
-{#if endPoint.heading === "linear"}
+{#if heading.type === "linear"}
   <div class="flex items-center gap-1">
     <span class="text-xs text-neutral-600 dark:text-neutral-400">Start:</span>
     <input
@@ -51,7 +75,7 @@ With tangential heading, the heading follows the direction of the line."
       type="number"
       min="-180"
       max="180"
-      bind:value={endPoint.startDeg}
+      bind:value={heading.startDeg}
       oninput={() => dispatch("change")}
       onblur={() => dispatch("commit")}
       title="The heading the robot starts this line at (in degrees)"
@@ -65,14 +89,14 @@ With tangential heading, the heading follows the direction of the line."
       type="number"
       min="-180"
       max="180"
-      bind:value={endPoint.endDeg}
+      bind:value={heading.endDeg}
       oninput={() => dispatch("change")}
       onblur={() => dispatch("commit")}
       title="The heading the robot ends this line at (in degrees)"
       disabled={locked}
     />
   </div>
-{:else if endPoint.heading === "constant"}
+{:else if heading.type === "constant"}
   <div class="flex items-center gap-1">
     <span class="text-xs text-neutral-600 dark:text-neutral-400">Deg:</span>
     <input
@@ -81,14 +105,15 @@ With tangential heading, the heading follows the direction of the line."
       type="number"
       min="-180"
       max="180"
-      value={endPoint.degrees || 0}
+      value={heading.degrees || 0}
       oninput={(e) => {
         const value = parseFloat(e.currentTarget.value);
+        const draft: HeadingDraft = heading;
         if (!isNaN(value)) {
-          endPoint.degrees = value;
+          draft.degrees = value;
         } else {
           // If empty or invalid, set to 0
-          endPoint.degrees = 0;
+          draft.degrees = 0;
           e.currentTarget.value = "0";
         }
         dispatch("change");
@@ -98,7 +123,8 @@ With tangential heading, the heading follows the direction of the line."
           e.currentTarget.value === "" ||
           isNaN(parseFloat(e.currentTarget.value))
         ) {
-          endPoint.degrees = 0;
+          const draft: HeadingDraft = heading;
+          draft.degrees = 0;
           e.currentTarget.value = "0";
         }
         dispatch("commit");
@@ -107,11 +133,11 @@ With tangential heading, the heading follows the direction of the line."
       disabled={locked}
     />
   </div>
-{:else if endPoint.heading === "tangential"}
+{:else if heading.type === "tangential"}
   <p class="text-sm font-extralight">Reverse:</p>
   <input
     type="checkbox"
-    bind:checked={endPoint.reverse}
+    bind:checked={heading.reverse}
     onchange={() => dispatch("change")}
     onblur={() => dispatch("commit")}
     title="Reverse the direction the robot faces along the tangential path"

@@ -18,7 +18,7 @@ export {
   normalizePiecewiseHeadingInterpolation,
   validatePiecewiseHeadingInterpolation,
   degreesToRadians,
-  toDegreesDisplay,
+  headingAngleAt,
   lineCurvePoints,
   approximateCurveLength,
   getPointAndTangentAtProgress,

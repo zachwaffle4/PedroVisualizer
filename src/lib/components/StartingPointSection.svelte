@@ -1,11 +1,11 @@
 <script lang="ts">
   import { stopPropagation } from "svelte/legacy";
 
-  import type { Point } from "../../types";
+  import type { StartPose } from "../../types";
   import { FIELD_SIZE } from "../../config";
 
   interface Props {
-    startPoint: Point;
+    startPoint: StartPose;
   }
 
   let { startPoint = $bindable() }: Props = $props();

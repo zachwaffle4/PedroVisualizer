@@ -1,10 +1,10 @@
-import type { Line, Point, SequenceItem, Settings, Shape } from "../types";
+import type { Line, SequenceItem, Settings, Shape, StartPose } from "../types";
 import type { FieldPoint } from "./fieldPoints";
 
-export const PROJECT_VERSION = "1.3.0";
+export const PROJECT_VERSION = "1.4.0";
 
 export interface ProjectDoc {
-  startPoint: Point;
+  startPoint: StartPose;
   lines: Line[];
   shapes: Shape[];
   sequence: SequenceItem[];

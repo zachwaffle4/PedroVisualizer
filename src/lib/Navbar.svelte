@@ -3,11 +3,11 @@
 
   import type {
     FieldPoint,
-    Point,
     Line,
     Shape,
     Settings,
     SequenceItem,
+    StartPose,
   } from "../types";
   import { onMount, onDestroy } from "svelte";
   import {
@@ -28,6 +28,7 @@
   import ExportCodeDialog from "./components/ExportCodeDialog.svelte";
   import MultiplePathsDialog from "./components/MultiplePathsDialog.svelte";
   import { calculatePathTime, formatTime } from "../utils";
+  import { makeLineId } from "../utils/ids";
   import { basename, pathStem } from "../utils/filename";
   import { downloadBlob } from "../utils/download";
   import NavDivider from "./components/ui/NavDivider.svelte";
@@ -37,12 +38,12 @@
 
   interface Props {
     loadFile: (evt: any) => any;
-    startPoint: Point;
+    startPoint: StartPose;
     lines: Line[];
     shapes: Shape[];
     sequence: SequenceItem[];
     fieldPoints?: FieldPoint[];
-    secondStartPoint?: Point | null;
+    secondStartPoint?: StartPose | null;
     secondLines?: Line[];
     secondShapes?: Shape[];
     secondSequence?: SequenceItem[];
@@ -202,7 +203,7 @@
     lines = getDefaultLines();
     sequence = lines.map((ln) => ({
       kind: "path",
-      lineId: ln.id || `line-${Math.random().toString(36).slice(2)}`,
+      lineId: ln.id || makeLineId(),
     }));
     shapes = getDefaultShapes();
     activePaths.set([]);

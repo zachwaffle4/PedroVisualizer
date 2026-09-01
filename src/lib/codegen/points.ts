@@ -1,6 +1,9 @@
-import type { BasePoint, Line, Point } from "../../types";
+import type { BasePoint, Line, StartPose } from "../../types";
 
-export function generatePointsArray(startPoint: Point, lines: Line[]): string {
+export function generatePointsArray(
+  startPoint: StartPose,
+  lines: Line[],
+): string {
   const points: BasePoint[] = [startPoint];
 
   lines.forEach((line) => {

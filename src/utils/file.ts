@@ -1,11 +1,17 @@
-import type { FieldPoint, Point, Line, Shape, SequenceItem } from "../types";
+import type {
+  FieldPoint,
+  StartPose,
+  Line,
+  Shape,
+  SequenceItem,
+} from "../types";
 
 /**
  * File save/load utilities for the visualizer
  */
 
 export interface SaveData {
-  startPoint: Point;
+  startPoint: StartPose;
   lines: Line[];
   shapes?: Shape[];
   settings?: any;
@@ -18,7 +24,7 @@ export interface SaveData {
  * Download trajectory data as a .pp file
  */
 export function downloadTrajectory(
-  startPoint: Point,
+  startPoint: StartPose,
   lines: Line[],
   shapes: Shape[],
   sequence?: SequenceItem[],

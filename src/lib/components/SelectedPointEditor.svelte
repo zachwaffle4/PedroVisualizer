@@ -100,7 +100,7 @@
     >
       <div class="text-gray-500">Heading</div>
       <HeadingControls
-        endPoint={selectedLine.endPoint}
+        heading={selectedLine.heading}
         locked={disabled}
         on:change={onLinesChanged}
         on:commit={() => {

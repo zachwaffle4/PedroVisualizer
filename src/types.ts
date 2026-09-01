@@ -33,42 +33,20 @@ export interface FieldPoint extends BasePoint {
   opacity?: number;
 }
 
-export type Point = BasePoint &
-  (
-    | {
-        heading: "linear";
-        startDeg: number;
-        endDeg: number;
-        degrees?: never;
-        reverse?: never;
-        name?: string;
-      }
-    | {
-        heading: "constant";
-        degrees: number;
-        startDeg?: never;
-        endDeg?: never;
-        reverse?: never;
-        name?: string;
-      }
-    | {
-        heading: "tangential";
-        degrees?: never;
-        startDeg?: never;
-        endDeg?: never;
-        reverse: boolean;
-        name?: string;
-      }
-    | {
-        heading: "piecewise";
-        piecewiseHeading: PiecewiseHeadingInterpolation;
-        degrees?: never;
-        startDeg?: never;
-        endDeg?: never;
-        reverse?: never;
-        name?: string;
-      }
-  );
+export type HeadingType = "linear" | "constant" | "tangential" | "piecewise";
+
+export type Heading =
+  | { type: "linear"; startDeg: number; endDeg: number }
+  | { type: "constant"; degrees: number }
+  | { type: "tangential"; reverse: boolean }
+  | { type: "piecewise"; piecewiseHeading: PiecewiseHeadingInterpolation };
+
+export type Point = BasePoint & { name?: string };
+
+export interface StartPose extends BasePoint {
+  name?: string;
+  headingDeg: number;
+}
 
 export type ControlPoint = BasePoint;
 
@@ -82,6 +60,7 @@ export interface Line {
   id?: string;
   endPoint: Point;
   controlPoints: ControlPoint[];
+  heading: Heading;
   color: string;
   name?: string;
   locked?: boolean;

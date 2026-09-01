@@ -1,5 +1,6 @@
-import type { Line, Point, SequenceItem } from "../../types";
-import { describeHeading, headingCall, poseHeading } from "./heading";
+import type { Line, SequenceItem, StartPose } from "../../types";
+import { headingAngleAt } from "../../utils/headingInterpolation";
+import { headingCall } from "./heading";
 import { IdentifierAllocator, toClassName } from "./identifiers";
 import { PEDRO_API } from "./pedroApi";
 import type {
@@ -11,7 +12,7 @@ import type {
 } from "./types";
 
 export interface BuildModelInput {
-  startPoint: Point;
+  startPoint: StartPose;
   lines: Line[];
   sequence?: SequenceItem[];
   mirrorHorizontally?: boolean;
@@ -42,34 +43,32 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
   const warnings: string[] = [];
   let usesInterpolator = false;
 
-  const startSpec = describeHeading(startPoint);
   const startPoseVar = poseNames.allocate(startPoint.name, "start");
   poses.push({
     varName: startPoseVar,
     x: startPoint.x,
     y: startPoint.y,
-    headingDeg: poseHeading(startSpec, "start"),
+    headingDeg: startPoint.headingDeg,
   });
 
   let previous = {
     varName: startPoseVar,
     x: startPoint.x,
     y: startPoint.y,
-    headingDeg: poseHeading(startSpec, "start"),
+    headingDeg: startPoint.headingDeg,
   };
 
   const methodNameByLineId = new Map<string, string>();
 
   lines.forEach((line, index) => {
     const endPoint = line.endPoint;
-    const spec = describeHeading(endPoint);
 
     const endPoseVar = poseNames.allocate(line.name, `point${index + 1}`);
-    const endHeadingDeg = poseHeading(spec, "end");
+    const endHeadingDeg = headingAngleAt(line.heading, "end");
 
     let segmentStartPoseVar = previous.varName;
-    if (spec.kind === "linear") {
-      const startHeadingDeg = poseHeading(spec, "start");
+    if (line.heading.type === "linear") {
+      const startHeadingDeg = headingAngleAt(line.heading, "start");
       if (startHeadingDeg !== previous.headingDeg) {
         segmentStartPoseVar = poseNames.allocateExact(`${endPoseVar}Start`);
         poses.push({
@@ -105,7 +104,7 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
     methodNameByLineId.set(lineId(line, index), methodName);
 
     const notes: string[] = [];
-    const heading = headingCall(spec, {
+    const heading = headingCall(line.heading, {
       startPoseVar: segmentStartPoseVar,
       endPoseVar,
       endX: endPoint.x,
@@ -163,12 +162,14 @@ function buildSequence(
   methodNameByLineId: Map<string, string>,
   sequence: SequenceItem[] | undefined,
 ): SequenceStep[] {
-  if (!sequence || sequence.length === 0) {
-    return paths.map((path) => ({
+  // Fall back to running every path in declaration order.
+  const allPaths = (): SequenceStep[] =>
+    paths.map((path) => ({
       kind: "path" as const,
       methodName: path.methodName,
     }));
-  }
+
+  if (!sequence || sequence.length === 0) return allPaths();
 
   const steps: SequenceStep[] = [];
   sequence.forEach((item) => {
@@ -179,11 +180,6 @@ function buildSequence(
     const methodName = methodNameByLineId.get(item.lineId);
     if (methodName) steps.push({ kind: "path", methodName });
   });
-  if (steps.length === 0 && lines.length > 0) {
-    return paths.map((path) => ({
-      kind: "path" as const,
-      methodName: path.methodName,
-    }));
-  }
+  if (steps.length === 0 && lines.length > 0) return allPaths();
   return steps;
 }

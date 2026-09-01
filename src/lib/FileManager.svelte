@@ -6,10 +6,11 @@
   import type {
     FileInfo,
     FieldPoint,
-    Point,
+    Heading,
     Line,
     Shape,
     SequenceItem,
+    StartPose,
   } from "../types";
   import * as browserFileStore from "../utils/browserFileStore";
   import {
@@ -19,7 +20,11 @@
     secondFilePath,
   } from "../stores";
   import { normalizeFieldPoints } from "../utils/fieldPoints";
-  import { normalizeLines, deriveSequence } from "../utils/normalize";
+  import {
+    normalizeLines,
+    normalizeStartPose,
+    deriveSequence,
+  } from "../utils/normalize";
   import { serializeProject } from "../utils/project";
   import { downloadJson } from "../utils/download";
   import { stripPpExtension } from "../utils/filename";
@@ -31,11 +36,11 @@
 
   interface Props {
     isOpen?: boolean;
-    startPoint: Point;
+    startPoint: StartPose;
     lines: Line[];
     shapes: Shape[];
     sequence: SequenceItem[];
-    secondStartPoint?: Point | null;
+    secondStartPoint?: StartPose | null;
     secondLines?: Line[];
     secondShapes?: Shape[];
     secondSequence?: SequenceItem[];
@@ -239,7 +244,7 @@
 
       const normalizedLines = normalizeLines(data.lines || []);
       return {
-        startPoint: data.startPoint,
+        startPoint: normalizeStartPose(data.startPoint),
         lines: normalizedLines,
         shapes: data.shapes || [],
         sequence: deriveSequence(data, normalizedLines),
@@ -577,9 +582,11 @@
       const content = await browserFileStore.readFile(selectedFile.path);
       const data = JSON.parse(content);
 
-      // Mirror the path data
+      // normalize before mirroring
+      data.lines = normalizeLines(data.lines || []);
+      data.startPoint = normalizeStartPose(data.startPoint ?? {});
+
       const mirroredData = mirrorPathData(data);
-      mirroredData.lines = normalizeLines(mirroredData.lines || []);
       mirroredData.sequence = deriveSequence(mirroredData, mirroredData.lines);
 
       const baseName = stripPpExtension(selectedFile.name);
@@ -641,33 +648,64 @@
     nameDialogOpen = false;
   }
 
-  function mirrorPointHeading(point: Point): Point {
-    // For linear heading, mirror both start and end degrees
-    if (point.heading === "linear") {
-      return {
-        ...point,
-        startDeg: 180 - point.startDeg,
-        endDeg: 180 - point.endDeg,
-      };
-    }
+  function mirrorHeading(heading: Heading): Heading {
+    switch (heading.type) {
+      // For linear heading, mirror both start and end degrees
+      case "linear":
+        return {
+          type: "linear",
+          startDeg: 180 - heading.startDeg,
+          endDeg: 180 - heading.endDeg,
+        };
 
-    // For constant heading, mirror the constant degree
-    if (point.heading === "constant") {
-      return {
-        ...point,
-        degrees: 180 - point.degrees,
-      };
-    }
+      // For constant heading, mirror the constant degree
+      case "constant":
+        return { type: "constant", degrees: 180 - heading.degrees };
 
-    // For tangential heading, keep the reverse flag unchanged so mirrored tangents stay mirrored
-    if (point.heading === "tangential") {
-      return {
-        ...point,
-        reverse: point.reverse,
-      };
-    }
+      // For tangential heading, keep the reverse flag unchanged so mirrored
+      // tangents stay mirrored
+      case "tangential":
+        return heading;
 
-    return point;
+      // Each piecewise segment carries its own angles, so mirror them all
+      case "piecewise":
+        return {
+          type: "piecewise",
+          piecewiseHeading: {
+            ...heading.piecewiseHeading,
+            segments: (heading.piecewiseHeading?.segments ?? []).map(
+              (segment) => {
+                const parameters = segment.parameters;
+                if (!parameters) return segment;
+                return {
+                  ...segment,
+                  parameters: {
+                    ...parameters,
+                    startDeg:
+                      parameters.startDeg === undefined
+                        ? undefined
+                        : 180 - parameters.startDeg,
+                    endDeg:
+                      parameters.endDeg === undefined
+                        ? undefined
+                        : 180 - parameters.endDeg,
+                    degrees:
+                      parameters.degrees === undefined
+                        ? undefined
+                        : 180 - parameters.degrees,
+                    point: parameters.point
+                      ? {
+                          ...parameters.point,
+                          x: FIELD_SIZE - parameters.point.x,
+                        }
+                      : undefined,
+                  },
+                };
+              },
+            ),
+          },
+        };
+    }
   }
 
   function mirrorPathData(data: any) {
@@ -676,7 +714,7 @@
     // Mirror start point
     if (mirrored.startPoint) {
       mirrored.startPoint.x = FIELD_SIZE - mirrored.startPoint.x;
-      mirrored.startPoint = mirrorPointHeading(mirrored.startPoint);
+      mirrored.startPoint.headingDeg = 180 - mirrored.startPoint.headingDeg;
     }
 
     // Mirror lines
@@ -685,7 +723,9 @@
         // Mirror end point
         if (line.endPoint) {
           line.endPoint.x = FIELD_SIZE - line.endPoint.x;
-          line.endPoint = mirrorPointHeading(line.endPoint);
+        }
+        if (line.heading) {
+          line.heading = mirrorHeading(line.heading);
         }
 
         // Mirror control points

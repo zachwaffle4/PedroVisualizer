@@ -1,7 +1,7 @@
 <script lang="ts">
   import { run } from "svelte/legacy";
 
-  import type { Point, Line, SequenceItem } from "../../types";
+  import type { StartPose, Line, SequenceItem } from "../../types";
   import Highlight from "svelte-highlight";
   import { java, kotlin, plaintext } from "svelte-highlight/languages";
   import codeStyle from "svelte-highlight/styles/androidstudio";
@@ -17,7 +17,7 @@
 
   interface Props {
     isOpen?: boolean;
-    startPoint: Point;
+    startPoint: StartPose;
     lines: Line[];
     sequence: SequenceItem[];
   }

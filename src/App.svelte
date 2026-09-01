@@ -5,9 +5,9 @@
     Line,
     BasePoint,
     Settings,
-    Point,
     SequenceItem,
     Shape,
+    StartPose,
   } from "./types";
   import * as d3 from "d3";
   import {
@@ -105,6 +105,7 @@
     generateOnionLayers,
     getRandomColor,
     normalizeLines,
+    normalizeStartPose,
     makeLineId,
     createLine,
     downloadTrajectory,
@@ -170,7 +171,7 @@
   let cancelGifExport = $state(false);
   // Path data
   let settings: Settings = $state({ ...DEFAULT_SETTINGS });
-  let startPoint: Point = $state(getDefaultStartPoint());
+  let startPoint: StartPose = $state(getDefaultStartPoint());
   const initialLines = normalizeLines(getDefaultLines());
   let lines: Line[] = $state(initialLines);
   let fieldPoints: FieldPoint[] = $state([]);
@@ -246,7 +247,7 @@
   let optimizingAll = $state(false);
 
   // Second path data (for alliance coordination) - DEPRECATED, use additionalPaths
-  let secondStartPoint: Point | null = $state(null);
+  let secondStartPoint: StartPose | null = $state(null);
   let secondLines: Line[] = $state([]);
   let secondSequence: SequenceItem[] = $state([]);
   let secondShapes: Shape[] = $state([]);
@@ -254,7 +255,7 @@
   // Multiple paths data (new system - supports up to 4 paths total)
   interface AdditionalPathData {
     filePath: string;
-    startPoint: Point | null;
+    startPoint: StartPose | null;
     lines: Line[];
     sequence: SequenceItem[];
     shapes: Shape[];
@@ -522,7 +523,7 @@
           const normalizedLines = normalizeLines(data.lines || []);
           newAdditionalPaths.push({
             filePath,
-            startPoint: data.startPoint,
+            startPoint: normalizeStartPose(data.startPoint),
             lines: normalizedLines,
             shapes: data.shapes || [],
             sequence:
@@ -1493,13 +1494,7 @@
 
     // Parse and load the uploaded file, then cache it into the browser store.
     loadTrajectoryFromFile(evt, async (data) => {
-      // Ensure startPoint has all required fields
-      startPoint = data.startPoint || {
-        x: 72,
-        y: 72,
-        heading: "tangential",
-        reverse: false,
-      };
+      startPoint = normalizeStartPose(data.startPoint ?? { x: 72, y: 72 });
 
       // Normalize lines with all required fields
       const normalizedLines = normalizeLines(data.lines || []);
@@ -2334,11 +2329,7 @@
       // Fallback for initialization or empty state
       robotXY = { x: x(startPoint.x), y: y(startPoint.y) };
       robotT = null;
-      // Calculate initial heading based on start point settings
-      if (startPoint.heading === "linear") robotHeading = -startPoint.startDeg;
-      else if (startPoint.heading === "constant")
-        robotHeading = -startPoint.degrees;
-      else robotHeading = 0;
+      robotHeading = -startPoint.headingDeg;
     }
   });
   // Second robot state calculation (for dual path mode)

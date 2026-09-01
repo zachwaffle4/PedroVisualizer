@@ -1,66 +1,9 @@
 import type {
+  Heading,
   PiecewiseHeadingInterpolation,
   PiecewiseHeadingSegment,
-  Point,
 } from "../../types";
 import type { HeadingCall, InterpolatorRef, PiecewiseNode } from "./types";
-
-export type HeadingSpec =
-  | { kind: "constant"; deg: number }
-  | { kind: "linear"; startDeg: number; endDeg: number }
-  | { kind: "tangential"; reversed: boolean }
-  | { kind: "piecewise"; interpolation: PiecewiseHeadingInterpolation };
-
-export function describeHeading(point: Point): HeadingSpec {
-  switch (point.heading) {
-    case "constant":
-      return { kind: "constant", deg: point.degrees ?? 0 };
-    case "linear":
-      return {
-        kind: "linear",
-        startDeg: point.startDeg ?? 0,
-        endDeg: point.endDeg ?? 0,
-      };
-    case "tangential":
-      return { kind: "tangential", reversed: !!point.reverse };
-    case "piecewise":
-      return { kind: "piecewise", interpolation: point.piecewiseHeading };
-    default: {
-      // Exhaustiveness guard: a new Point variant lands here at compile time.
-      const unreachable: never = point;
-      void unreachable;
-      return { kind: "tangential", reversed: false };
-    }
-  }
-}
-export function poseHeading(spec: HeadingSpec, role: "start" | "end"): number {
-  switch (spec.kind) {
-    case "constant":
-      return spec.deg;
-    case "linear":
-      return role === "start" ? spec.startDeg : spec.endDeg;
-    case "tangential":
-      return 0;
-    case "piecewise":
-      return piecewiseEdgeHeading(spec.interpolation, role);
-  }
-}
-
-function piecewiseEdgeHeading(
-  interpolation: PiecewiseHeadingInterpolation,
-  role: "start" | "end",
-): number {
-  const segments = interpolation?.segments ?? [];
-  const segment =
-    role === "start" ? segments[0] : segments[segments.length - 1];
-  const parameters = segment?.parameters;
-  if (!parameters) return 0;
-  if (segment.interpolationType === "constant") return parameters.degrees ?? 0;
-  if (segment.interpolationType === "linear") {
-    return (role === "start" ? parameters.startDeg : parameters.endDeg) ?? 0;
-  }
-  return 0;
-}
 
 export interface HeadingCallContext {
   startPoseVar: string;
@@ -77,10 +20,10 @@ export interface HeadingCallContext {
 }
 
 export function headingCall(
-  spec: HeadingSpec,
+  heading: Heading,
   ctx: HeadingCallContext,
 ): HeadingCall {
-  switch (spec.kind) {
+  switch (heading.type) {
     case "constant":
       return { kind: "constant", poseVar: ctx.endPoseVar };
     case "linear":
@@ -90,9 +33,9 @@ export function headingCall(
         endPoseVar: ctx.endPoseVar,
       };
     case "tangential":
-      return { kind: "tangential", reversed: spec.reversed };
+      return { kind: "tangential", reversed: heading.reverse };
     case "piecewise":
-      return piecewiseCall(spec.interpolation, ctx);
+      return piecewiseCall(heading.piecewiseHeading, ctx);
   }
 }
 
