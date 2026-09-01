@@ -33,12 +33,23 @@ export type HeadingCall =
   | { kind: "piecewise"; nodes: PiecewiseNode[] }
   | { kind: "unsupported"; reason: string };
 
+/**
+ * A path expression. A group becomes Pedro's `path(...)`, which takes the
+ * child paths; its heading is null unless the group overrides its children's.
+ */
+export type PathExpr =
+  | {
+      kind: "segment";
+      startPoseVar: string;
+      controlPoseVars: string[];
+      endPoseVar: string;
+      heading: HeadingCall | null;
+    }
+  | { kind: "group"; children: PathExpr[]; heading: HeadingCall | null };
+
 export interface PathDecl {
   methodName: string;
-  startPoseVar: string;
-  controlPoseVars: string[];
-  endPoseVar: string;
-  heading: HeadingCall;
+  expression: PathExpr;
   note?: string;
 }
 

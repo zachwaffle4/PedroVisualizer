@@ -6,6 +6,7 @@ import type {
   HeadingCall,
   InterpolatorRef,
   PathDecl,
+  PathExpr,
   PiecewiseNode,
 } from "./types";
 
@@ -58,16 +59,25 @@ function headingSuffix(heading: HeadingCall, spec: LanguageSpec): string {
   }
 }
 
-export function pathExpression(path: PathDecl, spec: LanguageSpec): string {
+function expressionOf(expr: PathExpr, spec: LanguageSpec): string {
   const base =
-    path.controlPoseVars.length === 0
-      ? PEDRO_API.paths.line(path.startPoseVar, path.endPoseVar)
-      : PEDRO_API.paths.curve(
-          path.startPoseVar,
-          path.controlPoseVars,
-          path.endPoseVar,
-        );
-  return `${base}${headingSuffix(path.heading, spec)}`;
+    expr.kind === "group"
+      ? PEDRO_API.paths.group(
+          expr.children.map((child) => expressionOf(child, spec)),
+        )
+      : expr.controlPoseVars.length === 0
+        ? PEDRO_API.paths.line(expr.startPoseVar, expr.endPoseVar)
+        : PEDRO_API.paths.curve(
+            expr.startPoseVar,
+            expr.controlPoseVars,
+            expr.endPoseVar,
+          );
+
+  return expr.heading ? `${base}${headingSuffix(expr.heading, spec)}` : base;
+}
+
+export function pathExpression(path: PathDecl, spec: LanguageSpec): string {
+  return expressionOf(path.expression, spec);
 }
 
 export function emitPoseFields(model: ExportModel, spec: LanguageSpec): string {
