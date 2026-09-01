@@ -40,6 +40,17 @@
     onToggleLock,
     onCommitPointChange,
   }: Props = $props();
+
+  // Read the point off the line rather than the `selectedPoint` prop: locking
+  // rebuilds the segment, and only the line reflects that new state.
+  let livePoint = $derived(
+    !selectedLine
+      ? null
+      : selectedPointIndex === 0
+        ? selectedLine.endPoint
+        : (selectedLine.controlPoints[selectedPointIndex - 1] ?? selectedPoint),
+  );
+  let isPointLocked = $derived(Boolean(livePoint?.locked));
 </script>
 
 <div
@@ -114,7 +125,7 @@
         {selectedLine.controlPoints.length}
       </StatCell>
       <StatCell label="Locked">
-        {selectedLine.locked ? "Yes" : "No"}
+        {isPointLocked ? "Yes" : "No"}
       </StatCell>
     </div>
 

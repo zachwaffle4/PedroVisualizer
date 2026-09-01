@@ -231,12 +231,11 @@
             value={settings.leftPanelWidth ??
               DEFAULT_SETTINGS.leftPanelWidth ??
               370}
-            min={180}
-            max={800}
+            min={0}
             step={5}
             suffix="px"
             inputClass="console-input w-28 px-3 py-2"
-            onInput={(v) => handleNumberInput(v, "leftPanelWidth", 180, 800)}
+            onInput={(v) => handleNumberInput(v, "leftPanelWidth", 0)}
           />
 
           <NumberField
@@ -245,12 +244,11 @@
             value={settings.rightPanelWidth ??
               DEFAULT_SETTINGS.rightPanelWidth ??
               620}
-            min={180}
-            max={800}
+            min={0}
             step={5}
             suffix="px"
             inputClass="console-input w-28 px-3 py-2"
-            onInput={(v) => handleNumberInput(v, "rightPanelWidth", 180, 800)}
+            onInput={(v) => handleNumberInput(v, "rightPanelWidth", 0)}
           />
 
           <div>
@@ -261,11 +259,10 @@
                 DEFAULT_SETTINGS.leftPanelMinWidth ??
                 0}
               min={0}
-              max={600}
               step={5}
               suffix="px"
               inputClass="console-input w-28 px-3 py-2"
-              onInput={(v) => handleNumberInput(v, "leftPanelMinWidth", 0, 600)}
+              onInput={(v) => handleNumberInput(v, "leftPanelMinWidth", 0)}
             />
             <div class="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
               Prevents the left sidebar from being squished smaller than this.
@@ -281,12 +278,10 @@
                 DEFAULT_SETTINGS.rightPanelMinWidth ??
                 0}
               min={0}
-              max={600}
               step={5}
               suffix="px"
               inputClass="console-input w-28 px-3 py-2"
-              onInput={(v) =>
-                handleNumberInput(v, "rightPanelMinWidth", 0, 600)}
+              onInput={(v) => handleNumberInput(v, "rightPanelMinWidth", 0)}
             />
             <div class="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
               Prevents the right sidebar from being squished smaller than this.

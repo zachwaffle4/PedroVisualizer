@@ -2,8 +2,6 @@ import type { Settings } from "../../types";
 import { DEFAULT_SETTINGS } from "../../config/defaults";
 import { clamp } from "../../utils/math";
 
-export const SIDE_PANEL_MIN_WIDTH = 240;
-export const SIDE_PANEL_MAX_WIDTH = 620;
 export const CENTER_MIN_WIDTH = 300;
 export const PANEL_DIVIDER_WIDTH = 18;
 
@@ -68,10 +66,9 @@ export function clampPanelWidth(
     otherPanelWidth -
     minCenterWidthForSquare -
     PANEL_DIVIDER_WIDTH * 2;
-  const effectiveMax = Math.max(
-    minWidth,
-    Math.min(SIDE_PANEL_MAX_WIDTH, maxPanelWidth),
-  );
+  // No fixed upper bound: a panel may grow until it would squeeze the centre
+  // stage below the width that keeps the field square.
+  const effectiveMax = Math.max(minWidth, maxPanelWidth);
   return clamp(desiredWidth, minWidth, effectiveMax);
 }
 

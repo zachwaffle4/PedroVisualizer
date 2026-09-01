@@ -50,17 +50,7 @@
   <div class="flex items-center justify-between gap-2">
     <div>
       <div class="text-gray-500">Selected Point</div>
-      <div class="flex items-center gap-2">
-        <span class="font-medium text-gray-100">{selectedPointLabel}</span>
-        <!-- Status box reflecting this point's own lock state. -->
-        <span
-          class="rounded border px-1.5 py-0.5 text-[10px] font-semibold {isPointLocked
-            ? 'border-amber-600 bg-amber-950 text-amber-300'
-            : 'border-[#444444] bg-[#161616] text-gray-400'}"
-        >
-          {isPointLocked ? "Locked" : "Unlocked"}
-        </span>
-      </div>
+      <div class="font-medium text-gray-100">{selectedPointLabel}</div>
     </div>
     <div class="flex flex-wrap gap-1">
       <button

@@ -371,11 +371,8 @@ body {
      The rails use minmax(0, …) so a window too narrow for their saved widths
      shrinks them instead of overflowing the shell. */
   grid-template-columns:
-    minmax(0, var(--left-panel-width, 330px))
-    var(--left-divider-width, 18px)
-    minmax(0, 1fr)
-    var(--right-divider-width, 18px)
-    minmax(0, var(--right-panel-width, 360px));
+    minmax(0, var(--left-panel-width, 330px)) 18px minmax(0, 1fr)
+    18px minmax(0, var(--right-panel-width, 360px));
   gap: 0;
   align-items: stretch;
 }
@@ -415,11 +412,6 @@ body {
   padding: 0 4px;
 }
 
-.panel-divider--hidden {
-  padding: 0;
-  overflow: hidden;
-}
-
 .panel-divider-grip {
   display: flex;
   align-items: center;
@@ -431,6 +423,11 @@ body {
   color: var(--ui-text);
   padding: 0;
   cursor: ew-resize;
+}
+
+/* When its panel is hidden the grip is a restore button, not a resize handle. */
+.panel-divider-grip--restore {
+  cursor: pointer;
 }
 
 .panel-divider-grip:hover {

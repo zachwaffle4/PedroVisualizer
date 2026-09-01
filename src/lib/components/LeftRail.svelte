@@ -185,10 +185,10 @@
           class="panel-toggle-btn"
           type="button"
           onclick={onToggleVisibility}
-          aria-label="Hide left panel"
-          title="Hide left panel"
+          aria-label={hidden ? "Show left panel" : "Hide left panel"}
+          title={hidden ? "Show left panel" : "Hide left panel"}
         >
-          ‹
+          {hidden ? "›" : "‹"}
         </button>
       </div>
     </div>

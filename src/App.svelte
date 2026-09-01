@@ -118,6 +118,7 @@
     findPathById,
     groupPaths,
     groupingProblem,
+    segmentStartById,
     ungroupPath,
     movePath,
     reorderSequenceToMatch,
@@ -1731,55 +1732,43 @@
     }
   }
 
+  /**
+   * Insert a path between the selected point and the point immediately before
+   * it. The new segment ends at the midpoint of that pair and is spliced in
+   * ahead of the selection, so the existing path now starts from it.
+   */
   function createPathBetweenSelectedPoints() {
     const selected = findSegmentById(lines, selectedLineId);
-    if (!selected?.id || sequence.length === 0) return;
+    if (!selected?.id) return;
 
     const selectedSeqIndex = sequence.findIndex(
       (item) => item.kind === "path" && item.lineId === selected.id,
     );
-    if (selectedSeqIndex === -1) return;
 
-    // Use the LAST path in the sequence as the second anchor, not the next one.
-    let lastPathSeqIndex = -1;
-    for (let index = sequence.length - 1; index >= 0; index--) {
-      if (sequence[index].kind === "path") {
-        lastPathSeqIndex = index;
-        break;
-      }
-    }
+    // The point before the selection: the previous segment's endpoint, or the
+    // start pose when the selected path is the first one.
+    const previousPoint = segmentStartById(startPoint, lines, selected.id);
+    if (!previousPoint) return;
 
-    const lastLine =
-      lastPathSeqIndex >= 0
-        ? findSegmentById(
-            lines,
-            (sequence[lastPathSeqIndex] as SequencePathItem).lineId,
-          )
-        : null;
-
-    // Start from the currently selected point (endpoint or control point) so
-    // the path is created between the selection and the last point.
-    const startPoint = selectedPoint || selected.endPoint;
-    const endPoint = lastLine?.endPoint || {
-      x: startPoint.x,
-      y: startPoint.y,
-      heading: "tangential",
-      reverse: false,
-    };
-    const midpointX = (Number(startPoint.x) + Number(endPoint.x)) / 2;
-    const midpointY = (Number(startPoint.y) + Number(endPoint.y)) / 2;
+    const anchorPoint = selectedPoint || selected.endPoint;
+    const midpointX = (Number(previousPoint.x) + Number(anchorPoint.x)) / 2;
+    const midpointY = (Number(previousPoint.y) + Number(anchorPoint.y)) / 2;
     const newLine = createSegment(midpointX, midpointY);
     const newLineId = newLine.id;
 
+    // Splice before the selection so the order runs previous -> new -> selected.
+    const insertAt =
+      selectedLineIndex >= 0 ? selectedLineIndex : lines.length - 1;
     const nextLines = [...lines];
-    nextLines.splice(selectedLineIndex + 1, 0, newLine);
+    nextLines.splice(Math.max(0, insertAt), 0, newLine);
     lines = nextLines;
 
     const nextSequence = [...sequence];
-    nextSequence.splice(selectedSeqIndex + 1, 0, {
-      kind: "path",
-      lineId: newLineId,
-    });
+    nextSequence.splice(
+      selectedSeqIndex >= 0 ? selectedSeqIndex : nextSequence.length,
+      0,
+      { kind: "path", lineId: newLineId },
+    );
     sequence = nextSequence;
 
     selectedPathIds = [newLineId];
@@ -2675,7 +2664,7 @@
   <div class="ui-shell w-screen h-screen pt-[5.1rem] px-3 pb-3">
     <div
       class="desktop-grid h-full"
-      style={`--left-panel-width: ${leftPanelHidden ? "0px" : `${leftPanelWidth}px`}; --right-panel-width: ${rightPanelHidden ? "0px" : `${rightPanelWidth}px`}; --left-divider-width: ${leftPanelHidden ? "0px" : "18px"}; --right-divider-width: ${rightPanelHidden ? "0px" : "18px"}; --center-width: ${centerWidth}px;`}
+      style={`--left-panel-width: ${leftPanelHidden ? "0px" : `${leftPanelWidth}px`}; --right-panel-width: ${rightPanelHidden ? "0px" : `${rightPanelWidth}px`}; --center-width: ${centerWidth}px;`}
     >
       <LeftRail
         hidden={leftPanelHidden}
