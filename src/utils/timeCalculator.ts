@@ -1,5 +1,5 @@
 import type {
-  Point,
+  BasePoint,
   Line,
   Settings,
   StartPose,
@@ -12,7 +12,7 @@ import {
   getLineEndHeading,
   getAngularDifference,
 } from "./math";
-import { approximateCurveLength } from "./pathTraversal";
+import { flattenToAtomicSegments } from "./pathTraversal";
 
 /**
  * Calculate time for a motion profile (trapezoidal or triangular)
@@ -69,16 +69,21 @@ export function calculatePathTime(
   let currentTime = 0;
   let currentHeading = startPoint.headingDeg;
 
-  // Create map and default sequence
-  const lineById = new Map<string, Line>();
-  lines.forEach((ln) => lineById.set(ln.id, ln));
+  // Create map by order of segments
+  const segmentById = new Map(
+    flattenToAtomicSegments(startPoint, lines).map((segment) => [
+      segment.line.id,
+      segment,
+    ]),
+  );
 
   const seq: SequenceItem[] =
     sequence && sequence.length
       ? sequence
       : lines.map((ln) => ({ kind: "path", lineId: ln.id }));
 
-  let lastPoint: Point = startPoint;
+  // Where the robot actually sits, which does follow execution order.
+  let robotPoint: BasePoint = startPoint;
 
   seq.forEach((item, idx) => {
     if (item.kind === "wait") {
@@ -92,19 +97,20 @@ export function calculatePathTime(
           endTime: currentTime + waitSeconds,
           startHeading: currentHeading,
           targetHeading: currentHeading,
-          atPoint: lastPoint,
+          atPoint: robotPoint,
         });
         currentTime += waitSeconds;
       }
       return;
     }
 
-    const line = lineById.get(item.lineId);
-    if (!line || !line.endPoint) {
+    const segment = segmentById.get(item.lineId);
+    if (!segment) {
       // Skip missing or malformed lines in sequence
       return;
     }
-    const prevPoint = lastPoint;
+    const line = segment.line;
+    const prevPoint = segment.start;
 
     // --- ROTATION CHECK ---
     const requiredStartHeading = getLineStartHeading(line, prevPoint);
@@ -129,8 +135,7 @@ export function calculatePathTime(
     }
 
     // --- TRAVEL ---
-    const curvePoints = [prevPoint, ...line.controlPoints, line.endPoint];
-    const length = approximateCurveLength(curvePoints);
+    const length = segment.arcLength;
     segmentLengths.push(length);
     let segmentTime: number;
 
@@ -155,7 +160,7 @@ export function calculatePathTime(
     });
     currentTime += segmentTime;
     currentHeading = getLineEndHeading(line, prevPoint);
-    lastPoint = line.endPoint as Point;
+    robotPoint = line.endPoint;
   });
 
   const totalTime = currentTime;
