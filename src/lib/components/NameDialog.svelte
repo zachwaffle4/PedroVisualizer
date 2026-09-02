@@ -73,7 +73,7 @@
       onkeydown={handleKeydown}
       type="text"
       {placeholder}
-      class="console-input px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="console-input px-4 py-3"
     />
   </div>
 
@@ -82,7 +82,7 @@
     <button
       onclick={handleConfirm}
       disabled={!inputValue.trim()}
-      class="px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-600 disabled:cursor-not-allowed transition-colors font-medium"
+      class="console-action console-action--accent"
     >
       Confirm
     </button>

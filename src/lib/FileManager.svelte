@@ -25,7 +25,7 @@
     normalizeStartPose,
     deriveSequence,
   } from "../utils/normalize";
-  import { serializeProject } from "../utils/project";
+  import { newerVersionWarning, serializeProject } from "../utils/project";
   import { downloadJson } from "../utils/download";
   import { stripPpExtension } from "../utils/filename";
   import { FIELD_SIZE } from "../config";
@@ -241,6 +241,9 @@
       if (!data.startPoint || !data.lines) {
         throw new Error("Invalid file format: missing required fields");
       }
+
+      const versionWarning = newerVersionWarning(data.version);
+      if (versionWarning) showToast(versionWarning, "warning");
 
       const normalizedLines = normalizePaths(data.lines || []);
       return {
@@ -817,7 +820,7 @@
   {#if isOpen}
     <div
       transition:fade={{ duration: 300 }}
-      class="fixed inset-0 bg-black/50"
+      class="console-backdrop fixed inset-0"
       onclick={() => (isOpen = false)}
       role="button"
       tabindex="0"
@@ -832,16 +835,14 @@
 
   <!-- Sidebar -->
   <div
-    class="console-panel console-flat w-80 md:w-96 h-full bg-[#1a1a1a] dark:bg-[#1a1a1a] transform transition-transform duration-300 ease-in-out flex flex-col"
+    class="file-drawer w-80 md:w-96 h-full transform transition-transform duration-300 ease-in-out flex flex-col"
     class:translate-x-0={isOpen}
     class:-translate-x-full={!isOpen}
   >
     <!-- Header -->
-    <div
-      class="shrink-0 p-3 border-b border-neutral-200 dark:border-neutral-700"
-    >
+    <div class="file-drawer-band shrink-0 p-3">
       <div class="flex items-center justify-between">
-        <h2 class="text-base font-semibold text-neutral-100">Files</h2>
+        <h2 class="module-title">Files</h2>
         <button
           onclick={() => (isOpen = false)}
           class="console-icon-button"
@@ -866,28 +867,26 @@
 
       <!-- Error Message -->
       {#if errorMessage}
-        <div class="console-section mb-3 p-2 text-sm text-red-300">
+        <div class="console-section mt-3 p-2 text-xs text-[#f4c6c6]">
           ⚠ {errorMessage}
         </div>
       {/if}
     </div>
 
     <!-- New File Section -->
-    <div
-      class="shrink-0 px-3 py-2 border-b border-neutral-200 dark:border-neutral-700"
-    >
+    <div class="file-drawer-band shrink-0 px-3 py-2">
       {#if creatingNewFile}
         <div class="space-y-2">
           <input
             bind:value={newFileName}
             placeholder="Enter file name (e.g., my_path.pp)..."
-            class="w-full px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="console-input px-2 py-1.5 text-sm"
             onkeydown={(e) => e.key === "Enter" && createNewFile()}
           />
           <div class="flex gap-2">
             <button
               onclick={createNewFile}
-              class="flex-1 px-3 py-1.5 text-sm bg-green-500 hover:bg-green-600 text-white rounded-md transition-colors"
+              class="console-action console-action--accent console-action--compact flex-1"
             >
               Create
             </button>
@@ -896,7 +895,7 @@
                 creatingNewFile = false;
                 newFileName = "";
               }}
-              class="flex-1 px-3 py-1.5 text-sm bg-neutral-500 hover:bg-neutral-600 text-white rounded-md transition-colors"
+              class="console-action console-action--compact flex-1"
             >
               Cancel
             </button>
@@ -905,7 +904,7 @@
       {:else}
         <button
           onclick={() => (creatingNewFile = true)}
-          class="w-full px-3 py-1.5 text-sm bg-green-500 hover:bg-green-600 text-white rounded-md transition-colors flex items-center justify-center gap-2"
+          class="console-action console-action--compact w-full"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -931,11 +930,9 @@
       {#if loading}
         <div class="flex flex-col items-center justify-center h-32 gap-2">
           <div
-            class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"
+            class="animate-spin rounded-full h-8 w-8 border-b-2 border-[#8d68bd]"
           ></div>
-          <div class="text-neutral-500 dark:text-neutral-400">
-            Loading files...
-          </div>
+          <div class="module-caption">Loading files...</div>
         </div>
       {:else if errorMessage && files.length === 0}
         <div class="flex flex-col items-center justify-center h-32 p-3">
@@ -945,7 +942,7 @@
             viewBox="0 0 24 24"
             stroke-width={1}
             stroke="currentColor"
-            class="size-10 mx-auto mb-2 text-red-500"
+            class="size-10 mx-auto mb-2 text-[#a34e4e]"
           >
             <path
               stroke-linecap="round"
@@ -953,9 +950,7 @@
               d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
             />
           </svg>
-          <div
-            class="text-center text-xs text-neutral-600 dark:text-neutral-400"
-          >
+          <div class="module-caption text-center">
             {errorMessage}
           </div>
         </div>
@@ -975,14 +970,10 @@
               d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
             />
           </svg>
-          <div
-            class="text-center text-xs text-neutral-500 dark:text-neutral-400 mb-2"
-          >
-            No files yet
-          </div>
+          <div class="module-caption mb-2">No files yet</div>
           <button
             onclick={() => (creatingNewFile = true)}
-            class="px-2 py-1 text-xs bg-green-500 hover:bg-green-600 text-white rounded transition-colors"
+            class="console-action console-action--accent console-action--compact"
           >
             Create First
           </button>
@@ -990,7 +981,7 @@
       {:else}
         <div class="h-full overflow-y-auto">
           <div
-            class="sticky top-0 bg-white dark:bg-neutral-900 px-3 py-1 border-b border-neutral-200 dark:border-neutral-700 text-xs text-neutral-500 dark:text-neutral-400"
+            class="file-drawer-band file-drawer-caption sticky top-0 bg-[#151515] px-3 py-1.5"
           >
             Showing {files.length} file{files.length !== 1 ? "s" : ""}
           </div>

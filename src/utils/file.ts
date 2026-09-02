@@ -11,6 +11,8 @@ import type {
  */
 
 export interface SaveData {
+  /** Written by `buildProject`; absent in files predating it. */
+  version?: string;
   startPoint: StartPose;
   lines: Path[];
   shapes?: Shape[];

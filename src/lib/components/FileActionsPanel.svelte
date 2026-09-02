@@ -28,19 +28,13 @@
     onSaveToLocalFile,
   }: Props = $props();
 
-  const ICON_BTN =
-    "px-2 py-1.5 text-xs text-white rounded transition-colors flex items-center justify-center gap-1";
-  const SAVE_BTN =
-    "px-2 py-1.5 text-xs text-white rounded transition-colors flex items-center justify-center gap-1";
+  const ICON_BTN = "console-action console-action--compact";
+  const SAVE_BTN = "console-action console-action--compact gap-1";
 </script>
 
 {#if selectedFile}
-  <div
-    class="shrink-0 p-3 border-t border-neutral-200 dark:border-neutral-700 space-y-2 bg-neutral-50 dark:bg-neutral-950"
-  >
-    <div
-      class="text-xs font-medium text-neutral-700 dark:text-neutral-300 px-1"
-    >
+  <div class="file-drawer-band file-drawer-band--footer shrink-0 p-3 space-y-2">
+    <div class="module-mono">
       {selectedFile.name}
     </div>
 
@@ -48,7 +42,7 @@
     <div class="grid grid-cols-3 gap-1">
       <button
         onclick={() => selectedFile && onRename(selectedFile)}
-        class="{ICON_BTN} bg-amber-500 hover:bg-amber-600"
+        class={ICON_BTN}
         title="Rename this file"
       >
         <PencilIcon className="size-3.5" strokeWidth={2} />
@@ -56,7 +50,7 @@
 
       <button
         onclick={() => selectedFile && onDelete(selectedFile)}
-        class="{ICON_BTN} bg-red-500 hover:bg-red-600"
+        class="{ICON_BTN} console-action--danger"
         title="Delete this file"
       >
         <TrashIcon className="size-3.5" strokeWidth={2} />
@@ -64,7 +58,7 @@
 
       <button
         onclick={onDuplicate}
-        class="{ICON_BTN} bg-blue-500 hover:bg-blue-600"
+        class={ICON_BTN}
         title="Duplicate this file"
       >
         <svg
@@ -87,7 +81,7 @@
     <!-- Mirror Button - Full Width -->
     <button
       onclick={onDuplicateAndMirror}
-      class="w-full px-3 py-2.5 text-sm font-medium bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+      class="console-action console-action--accent w-full text-sm"
       title="Create a mirrored copy of this path"
     >
       <svg
@@ -109,15 +103,11 @@
 
     <!-- Saving Operations -->
     <div class="space-y-1">
-      <div
-        class="text-xs font-medium text-neutral-600 dark:text-neutral-400 px-1"
-      >
-        Save Options
-      </div>
+      <div class="file-drawer-caption px-1">Save Options</div>
       <div class="grid grid-cols-2 gap-1">
         <button
           onclick={onOverwrite}
-          class="{SAVE_BTN} bg-emerald-600 hover:bg-emerald-700"
+          class={SAVE_BTN}
           disabled={!selectedFile}
           title="Save into selected file (overwrite)"
         >
@@ -139,7 +129,7 @@
         </button>
         <button
           onclick={onNew}
-          class="{SAVE_BTN} bg-green-500 hover:bg-green-600"
+          class={SAVE_BTN}
           title="Create new file and save"
         >
           <PlusIcon className="size-3.5" strokeWidth={2} />
@@ -147,7 +137,7 @@
         </button>
         <button
           onclick={onDownload}
-          class="{SAVE_BTN} bg-blue-600 hover:bg-blue-700"
+          class={SAVE_BTN}
           title="Download .pp to computer"
         >
           <svg
@@ -168,7 +158,7 @@
         </button>
         <button
           onclick={onSaveToLocalFile}
-          class="{SAVE_BTN} bg-indigo-600 hover:bg-indigo-700"
+          class={SAVE_BTN}
           title="Save to local file"
         >
           <svg
@@ -192,7 +182,7 @@
   </div>
 {:else}
   <div
-    class="shrink-0 p-3 border-t border-neutral-200 dark:border-neutral-700 text-center text-xs text-neutral-500 dark:text-neutral-400"
+    class="file-drawer-band file-drawer-band--footer module-caption shrink-0 p-3 text-center"
   >
     Select a file to manage
   </div>

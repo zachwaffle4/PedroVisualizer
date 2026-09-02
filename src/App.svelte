@@ -45,7 +45,12 @@
   import { createPerfSampler, sampleNodeCounts } from "./utils/perf";
   import { exportAsGif } from "./utils/gifExporter";
   import { downloadBlob } from "./utils/download";
-  import { buildProject } from "./utils/project";
+  import {
+    PROJECT_VERSION,
+    buildProject,
+    newerVersionWarning,
+  } from "./utils/project";
+  import { showToast } from "./lib/toast";
   import { basename, pathStem } from "./utils/filename";
   import { buildPathElements } from "./lib/scene/paths";
   import { fitStrokeToLines } from "./lib/pen/strokeFitting";
@@ -1663,6 +1668,9 @@
 
     // Parse and load the uploaded file, then cache it into the browser store.
     loadTrajectoryFromFile(evt, async (data) => {
+      const versionWarning = newerVersionWarning(data.version);
+      if (versionWarning) showToast(versionWarning, "warning");
+
       startPoint = normalizeStartPose(data.startPoint ?? { x: 72, y: 72 });
 
       // Normalize lines with all required fields
@@ -2749,7 +2757,7 @@
       <LeftRail
         hidden={leftPanelHidden}
         fileName={basename($currentFilePath) || "untitled_path.pp"}
-        version="v1.2.1"
+        version={`v${PROJECT_VERSION}`}
         lineCount={atomicSegments(lines).length}
         {pathPreviewItems}
         {selectedPathIds}
