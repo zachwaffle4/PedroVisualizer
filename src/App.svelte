@@ -70,7 +70,9 @@
     computeGifDuration,
     createImageLoader,
     createRobotDrawer,
+    drawPathLayer,
     formatGifProgressStatus,
+    pathLayerLineWidth,
     resolveGifFileName,
   } from "./lib/export/gifExport";
   import {
@@ -939,19 +941,95 @@
 
       gifExportStatus = "Capturing frames...";
 
-      // Export as GIF with manual frame control
+      // Export as GIF with manual frame control.
+      //
+      // Instead of snapshotting the live Two.js SVG into an <img> every frame
+      // (async, slow, and prone to capturing a partially-rendered/blank scene
+      // that flashes), we pre-render the static content — the field background
+      // plus every visible path line — onto a single offscreen canvas once,
+      // then blit it each frame and paint the moving robot on top. Paths are
+      // therefore always present and stable, and the export runs much faster.
       const durationMs = totalDuration * 1000;
+
+      // Output dimensions, matched to what the encoder will use.
+      const sourceWidth =
+        rendererElement instanceof HTMLCanvasElement
+          ? rendererElement.width
+          : rendererElement.clientWidth || rendererElement.viewBox?.baseVal?.width;
+      const sourceHeight =
+        rendererElement instanceof HTMLCanvasElement
+          ? rendererElement.height
+          : rendererElement.clientHeight || rendererElement.viewBox?.baseVal?.height;
+      const outWidth = Math.max(1, Math.floor(sourceWidth * scale));
+      const outHeight = Math.max(1, Math.floor(sourceHeight * scale));
+
+      // Pre-render the static layer once (field + all path lines).
+      const baseLayerCanvas = document.createElement("canvas");
+      baseLayerCanvas.width = outWidth;
+      baseLayerCanvas.height = outHeight;
+      const baseCtx = baseLayerCanvas.getContext("2d");
+      if (!baseCtx) {
+        throw new Error("Failed to get canvas context");
+      }
+      baseCtx.drawImage(fieldImage, 0, 0, outWidth, outHeight);
+
+      const toX = (inch: number) => x(inch) * scale;
+      const toY = (inch: number) => y(inch) * scale;
+      const pathLineWidth = pathLayerLineWidth(toX);
+
+      if ($activePaths.length === 0) {
+        // Main path is visible (single or dual-path mode).
+        drawPathLayer(baseCtx, {
+          startPoint,
+          paths: lines,
+          toX,
+          toY,
+          lineWidth: pathLineWidth,
+          opacity: settings.pathOpacity ?? 1,
+        });
+
+        if ($dualPathMode && secondStartPoint && secondLines.length > 0) {
+          drawPathLayer(baseCtx, {
+            startPoint: secondStartPoint,
+            paths: secondLines,
+            toX,
+            toY,
+            lineWidth: pathLineWidth,
+            color: SECOND_PATH_COLOR,
+            opacity: settings.pathOpacity ?? 1,
+          });
+        }
+      } else {
+        // Multi-path mode: draw only the additional paths.
+        additionalPaths.forEach((pathData) => {
+          if (!pathData.startPoint || pathData.lines.length === 0) return;
+          drawPathLayer(baseCtx, {
+            startPoint: pathData.startPoint,
+            paths: pathData.lines,
+            toX,
+            toY,
+            lineWidth: pathLineWidth,
+            color: pathData.color,
+            honorLocked: false,
+            opacity: pathData.settings.pathOpacity ?? settings.pathOpacity ?? 1,
+          });
+        });
+      }
+
       const blob = await exportAsGif({
         source: rendererElement as HTMLCanvasElement | SVGSVGElement,
+        width: outWidth,
+        height: outHeight,
         duration: durationMs,
-        fps: GIF_EXPORT_FPS, // Higher FPS for smoother animation
-        quality: GIF_EXPORT_QUALITY, // Slightly lower quality for smaller file size
-        scale, // Lower resolution for smaller file size
+        fps: GIF_EXPORT_FPS,
+        quality: GIF_EXPORT_QUALITY,
+        scale,
         shouldCancel: () => cancelGifExport,
-        onDrawBackground: (ctx, outputWidth, outputHeight) => {
-          ctx.drawImage(fieldImage, 0, 0, outputWidth, outputHeight);
-        },
-        onDrawForeground: (ctx) => {
+        onDrawFrame: (ctx) => {
+          // Static field + paths layer, already rendered and cached.
+          ctx.drawImage(baseLayerCanvas, 0, 0, outWidth, outHeight);
+
+          // Foreground robots.
           if ($activePaths.length === 0) {
             drawRobot(ctx, robotXY, robotHeading, 1);
             if ($dualPathMode && secondStartPoint && secondLines.length > 0) {
@@ -971,14 +1049,14 @@
         },
         onFrameAdvance: async (frameIndex, totalFrames) => {
           // Calculate the percentage for this frame
-          const framePercent = (frameIndex / (totalFrames - 1)) * 100;
+          const framePercent =
+            totalFrames > 1 ? (frameIndex / (totalFrames - 1)) * 100 : 0;
 
           // Update the animation to this frame
           percent = framePercent;
           animationController.seekToPercent(framePercent);
-          two.update(); // Force Two.js to render
 
-          // Allow UI to update before capturing
+          // Allow reactivity (robot positions) to settle before painting.
           await tick();
         },
       });
