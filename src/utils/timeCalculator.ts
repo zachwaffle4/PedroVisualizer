@@ -7,11 +7,8 @@ import type {
   TimelineEvent,
   SequenceItem,
 } from "../types";
-import {
-  getLineStartHeading,
-  getLineEndHeading,
-  getAngularDifference,
-} from "./math";
+import { getAngularDifference } from "./math";
+import { getLineStartHeading, getLineEndHeading } from "./headingInterpolation";
 import {
   atomicSegments,
   effectiveHeadingAt,

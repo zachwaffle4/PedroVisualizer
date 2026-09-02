@@ -1,4 +1,4 @@
-import type { AtomicPath, BasePoint, Heading, Point } from "../types";
+import type { BasePoint } from "../types";
 import { FIELD_SIZE } from "../config/defaults";
 
 export function clamp(value: number, min: number, max: number): number {
@@ -136,57 +136,6 @@ export function getTangentAngle(
   p2: { x: number; y: number },
 ): number {
   return Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
-}
-
-/**
- * `heading` and `t` are passed in when a group overrides this segment's own
- * heading: the rule then belongs to the group and `t` is the position within
- * it, so a linear sweep is read part-way through rather than restarted.
- */
-export function getLineStartHeading(
-  line: AtomicPath | undefined,
-  previousPoint: Point,
-  heading: Heading | undefined = line?.heading,
-  t = 0,
-): number {
-  if (!line || !line.endPoint || !heading) return 0;
-
-  if (heading.type === "constant") return heading.degrees;
-  if (heading.type === "linear")
-    return shortestRotation(heading.startDeg, heading.endDeg, t);
-  if (heading.type === "tangential") {
-    const nextP =
-      line.controlPoints.length > 0 ? line.controlPoints[0] : line.endPoint;
-    const angle = getTangentAngle(previousPoint, nextP);
-    return heading.reverse
-      ? transformAngle(angle + 180)
-      : transformAngle(angle);
-  }
-  return 0;
-}
-
-export function getLineEndHeading(
-  line: AtomicPath | undefined,
-  previousPoint: Point,
-  heading: Heading | undefined = line?.heading,
-  t = 1,
-): number {
-  if (!line || !line.endPoint || !heading) return 0;
-
-  if (heading.type === "constant") return heading.degrees;
-  if (heading.type === "linear")
-    return shortestRotation(heading.startDeg, heading.endDeg, t);
-  if (heading.type === "tangential") {
-    const prevP =
-      line.controlPoints.length > 0
-        ? line.controlPoints[line.controlPoints.length - 1]
-        : previousPoint;
-    const angle = getTangentAngle(prevP, line.endPoint);
-    return heading.reverse
-      ? transformAngle(angle + 180)
-      : transformAngle(angle);
-  }
-  return 0;
 }
 
 /**

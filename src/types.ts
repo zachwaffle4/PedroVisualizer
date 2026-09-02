@@ -14,6 +14,8 @@ export interface PiecewiseHeadingSegment {
   endProgress: number;
   interpolationType: PiecewiseHeadingInterpolationType;
   reversed?: boolean;
+  /** Take the start angle from where the previous segment ends. Linear and constant only. */
+  continueFromPrevious?: boolean;
   parameters?: {
     startDeg?: number;
     endDeg?: number;

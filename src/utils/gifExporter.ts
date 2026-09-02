@@ -65,8 +65,7 @@ export async function exportAsGif(options: GifExportOptions): Promise<Blob> {
       ? source.height
       : source.clientHeight || source.viewBox?.baseVal?.height;
 
-  const width =
-    explicitWidth ?? Math.max(1, Math.floor(sourceWidth * scale));
+  const width = explicitWidth ?? Math.max(1, Math.floor(sourceWidth * scale));
   const height =
     explicitHeight ?? Math.max(1, Math.floor(sourceHeight * scale));
 
@@ -79,7 +78,11 @@ export async function exportAsGif(options: GifExportOptions): Promise<Blob> {
     workers ??
     Math.max(
       1,
-      Math.min(4, (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 2) - 1,
+      Math.min(
+        4,
+        (typeof navigator !== "undefined" && navigator.hardwareConcurrency) ||
+          2,
+      ) - 1,
     );
 
   // Create GIF encoder

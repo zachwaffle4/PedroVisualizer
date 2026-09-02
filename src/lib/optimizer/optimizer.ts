@@ -3,6 +3,7 @@ import { FIELD_SIZE } from "../../config/defaults";
 import { headingAngleAt } from "../../utils/headingInterpolation";
 import {
   flattenToAtomicSegments,
+  getPointAndTangentAtProgress,
   replaceSegment,
 } from "../../utils/pathTraversal";
 
@@ -26,8 +27,14 @@ export function buildOptimizationPayload(
 
   return {
     waypoints,
-    start_heading_degrees: headingAngleAt(line.heading, "start"),
-    end_heading_degrees: headingAngleAt(line.heading, "end"),
+    start_heading_degrees: headingAngleAt(line.heading, "start", {
+      ...getPointAndTangentAtProgress(segment.points, 0),
+      curvePoints: segment.points,
+    }),
+    end_heading_degrees: headingAngleAt(line.heading, "end", {
+      ...getPointAndTangentAtProgress(segment.points, 1),
+      curvePoints: segment.points,
+    }),
     x_velocity: settings.xVelocity,
     y_velocity: settings.yVelocity,
     angular_velocity: settings.aVelocity,

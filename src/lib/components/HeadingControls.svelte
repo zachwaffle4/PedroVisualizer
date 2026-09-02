@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
+  import PiecewiseHeadingEditor from "./PiecewiseHeadingEditor.svelte";
   import { createDefaultPiecewiseHeadingInterpolation } from "../../utils/headingInterpolation";
   import type {
     Heading,
@@ -46,6 +47,16 @@
     }
     dispatch("change");
   }
+
+  function setPiecewiseHeading(
+    next: PiecewiseHeadingInterpolation,
+    commit: boolean,
+  ) {
+    const draft: HeadingDraft = heading;
+    draft.piecewiseHeading = next;
+    dispatch("change");
+    if (commit) dispatch("commit");
+  }
 </script>
 
 <select
@@ -56,7 +67,8 @@
   title="The heading style of the robot.
 With constant heading, the robot maintains the same heading throughout the line.
 With linear heading, heading changes linearly between given start and end angles.
-With tangential heading, the heading follows the direction of the line."
+With tangential heading, the heading follows the direction of the line.
+With piecewise heading, the line is split into stretches that each use their own rule."
   disabled={locked}
 >
   <option value="constant">Constant</option>
@@ -142,4 +154,13 @@ With tangential heading, the heading follows the direction of the line."
     title="Reverse the direction the robot faces along the tangential path"
     disabled={locked}
   />
+{:else if heading.type === "piecewise"}
+  <!-- Takes a full row of the wrapping flex container the parents lay out. -->
+  <div class="w-full">
+    <PiecewiseHeadingEditor
+      config={heading.piecewiseHeading}
+      {locked}
+      onConfigChange={setPiecewiseHeading}
+    />
+  </div>
 {/if}

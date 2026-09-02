@@ -955,11 +955,13 @@
       const sourceWidth =
         rendererElement instanceof HTMLCanvasElement
           ? rendererElement.width
-          : rendererElement.clientWidth || rendererElement.viewBox?.baseVal?.width;
+          : rendererElement.clientWidth ||
+            rendererElement.viewBox?.baseVal?.width;
       const sourceHeight =
         rendererElement instanceof HTMLCanvasElement
           ? rendererElement.height
-          : rendererElement.clientHeight || rendererElement.viewBox?.baseVal?.height;
+          : rendererElement.clientHeight ||
+            rendererElement.viewBox?.baseVal?.height;
       const outWidth = Math.max(1, Math.floor(sourceWidth * scale));
       const outHeight = Math.max(1, Math.floor(sourceHeight * scale));
 

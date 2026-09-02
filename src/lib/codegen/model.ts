@@ -1,5 +1,15 @@
-import type { AtomicPath, Path, SequenceItem, StartPose } from "../../types";
-import { atomicSegments } from "../../utils/pathTraversal";
+import type {
+  AtomicPath,
+  BasePoint,
+  Path,
+  SequenceItem,
+  StartPose,
+} from "../../types";
+import {
+  atomicSegments,
+  getPointAndTangentAtProgress,
+  lineCurvePoints,
+} from "../../utils/pathTraversal";
 import { headingAngleAt } from "../../utils/headingInterpolation";
 import { headingCall } from "./heading";
 import { IdentifierAllocator, toClassName } from "./identifiers";
@@ -86,7 +96,11 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
     const endPoint = line.endPoint;
     segmentNumber += 1;
     const endPoseVar = poseNames.allocate(line.name, `point${segmentNumber}`);
-    const endHeadingDeg = headingAngleAt(line.heading, "end");
+    const curvePoints = lineCurvePoints({ x: previous.x, y: previous.y }, line);
+    const endHeadingDeg = headingAngleAt(line.heading, "end", {
+      ...getPointAndTangentAtProgress(curvePoints, 1),
+      curvePoints,
+    });
 
     let segmentStartPoseVar = previous.varName;
     if (!overridden && line.heading.type === "linear") {
@@ -131,6 +145,7 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
           endPoseVar,
           endX: endPoint.x,
           endY: endPoint.y,
+          curvePoints,
           label,
           notes,
         });
@@ -158,6 +173,7 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
       endPoseVar: string;
       endX: number;
       endY: number;
+      curvePoints?: BasePoint[];
       label: string;
       notes: string[];
     },
@@ -167,6 +183,7 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
       endPoseVar: ctx.endPoseVar,
       endX: ctx.endX,
       endY: ctx.endY,
+      curvePoints: ctx.curvePoints,
       definePose,
       warn(message) {
         ctx.notes.push(message);

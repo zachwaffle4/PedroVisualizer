@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { run } from "svelte/legacy";
-
-  import { createEventDispatcher } from "svelte";
   import type {
     PiecewiseHeadingInterpolation,
     PiecewiseHeadingInterpolationType,
     PiecewiseHeadingSegment,
   } from "../../types";
   import {
+    MIN_SEGMENT_LENGTH,
     createDefaultPiecewiseHeadingInterpolation,
     normalizePiecewiseHeadingInterpolation,
+    piecewiseSegmentEndAngle,
+    segmentSupportsContinuation,
     segmentSupportsReverse,
     validatePiecewiseHeadingInterpolation,
   } from "../../utils/headingInterpolation";
@@ -17,15 +17,24 @@
   interface Props {
     config: PiecewiseHeadingInterpolation;
     locked?: boolean;
+    /** `commit` marks an edit that should get its own undo entry. */
+    onConfigChange: (
+      next: PiecewiseHeadingInterpolation,
+      commit: boolean,
+    ) => void;
   }
 
-  let { config = $bindable(), locked = false }: Props = $props();
-
-  const dispatch = createEventDispatcher();
+  let { config, locked = false, onConfigChange }: Props = $props();
 
   let advancedMode = $state(false);
   let activeBoundaryIndex: number | null = null;
-  let validationMessage = $state("");
+  let trackElement: HTMLDivElement | undefined = $state();
+
+  const FIELD_CLASS =
+    "w-full rounded border border-[#444444] bg-[#111111] px-2 py-1 text-gray-100 focus:outline-none focus:ring-1 focus:ring-green-500 disabled:cursor-not-allowed disabled:opacity-50 read-only:text-gray-400";
+  const ACTION_CLASS =
+    "rounded border border-[#444444] px-2 py-1 font-semibold text-gray-100 hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:opacity-50";
+  const LABEL_CLASS = "text-gray-500";
 
   const interpolationOptions: Array<{
     value: PiecewiseHeadingInterpolationType;
@@ -37,35 +46,38 @@
     { value: "facing-point", label: "Facing Point" },
   ];
 
-  function ensureConfig() {
+  $effect(() => {
     if (
       !config ||
       !Array.isArray(config.segments) ||
       config.segments.length === 0
     ) {
-      config = createDefaultPiecewiseHeadingInterpolation();
-      dispatch("change");
-      return;
+      onConfigChange(createDefaultPiecewiseHeadingInterpolation(), false);
     }
+  });
+
+  let segments = $derived(
+    normalizePiecewiseHeadingInterpolation(config).segments,
+  );
+  let validationMessage = $derived(
+    validatePiecewiseHeadingInterpolation(config) || "",
+  );
+
+  function commitConfig(next: PiecewiseHeadingInterpolation, commit = false) {
+    onConfigChange(normalizePiecewiseHeadingInterpolation(next), commit);
   }
 
-  run(() => {
-    ensureConfig();
-  });
-  run(() => {
-    validationMessage = validatePiecewiseHeadingInterpolation(config) || "";
-  });
-
-  function notifyChange(commit = false) {
-    config = normalizePiecewiseHeadingInterpolation(config);
-    dispatch(commit ? "commit" : "change");
+  /** Null when the angle depends on path geometry the editor does not have. */
+  function linkedStartAngle(index: number): number | null {
+    const segment = segments[index];
+    if (!segment?.continueFromPrevious || index === 0) return null;
+    return piecewiseSegmentEndAngle(segments, index - 1);
   }
 
   function segmentAtProgress(progress: number): number {
-    const normalized = normalizePiecewiseHeadingInterpolation(config);
-    for (let index = 0; index < normalized.segments.length; index += 1) {
-      const segment = normalized.segments[index];
-      const isLast = index === normalized.segments.length - 1;
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment = segments[index];
+      const isLast = index === segments.length - 1;
       if (
         progress >= segment.startProgress &&
         (progress < segment.endProgress || isLast)
@@ -73,7 +85,7 @@
         return index;
       }
     }
-    return normalized.segments.length - 1;
+    return segments.length - 1;
   }
 
   function segmentTemplate(
@@ -92,39 +104,43 @@
     };
   }
 
-  function splitSegment(progress: number) {
-    if (locked) return;
+  function splitSegmentAt(index: number, progress: number): boolean {
+    if (locked) return false;
     const normalized = normalizePiecewiseHeadingInterpolation(config);
-    const index = segmentAtProgress(progress);
     const target = normalized.segments[index];
 
     if (
       !target ||
-      progress <= target.startProgress ||
-      progress >= target.endProgress
+      progress <= target.startProgress + MIN_SEGMENT_LENGTH ||
+      progress >= target.endProgress - MIN_SEGMENT_LENGTH
     ) {
-      return;
+      return false;
     }
 
     const left = segmentTemplate(target, target.startProgress, progress);
     const right = segmentTemplate(target, progress, target.endProgress);
     normalized.segments.splice(index, 1, left, right);
-    config = normalized;
-    notifyChange();
+    commitConfig(normalized, true);
+    return true;
+  }
+
+  // Halves the last segment: appending after it would start the new segment at
+  // 1, leaving it zero-length and immediately dropped.
+  function addSegment() {
+    if (locked) return;
+    const index = segments.length - 1;
+    const last = segments[index];
+    if (!last) return;
+    splitSegmentAt(index, (last.startProgress + last.endProgress) / 2);
   }
 
   function removeSegment(index: number) {
     if (locked) return;
     const normalized = normalizePiecewiseHeadingInterpolation(config);
-    if (normalized.segments.length <= 1) {
-      config = createDefaultPiecewiseHeadingInterpolation();
-      notifyChange();
-      return;
-    }
+    if (normalized.segments.length <= 1) return;
 
     normalized.segments.splice(index, 1);
-    config = normalizePiecewiseHeadingInterpolation(normalized);
-    notifyChange();
+    commitConfig(normalized, true);
   }
 
   function getProgressFromPointer(
@@ -137,39 +153,39 @@
   }
 
   function beginBoundaryDrag(boundaryIndex: number, event: PointerEvent) {
-    if (locked) return;
+    if (locked || !trackElement) return;
+    // Without this the press also reaches the track and splits a segment.
     event.preventDefault();
     event.stopPropagation();
     activeBoundaryIndex = boundaryIndex;
+    // `event.currentTarget` is the handle, and is nulled once dispatch ends.
+    const track = trackElement;
+    let moved = false;
 
     const moveHandler = (moveEvent: PointerEvent) => {
       if (activeBoundaryIndex === null) return;
       const normalized = normalizePiecewiseHeadingInterpolation(config);
-      const progress = getProgressFromPointer(
-        moveEvent,
-        event.currentTarget as HTMLElement,
-      );
-      const minGap = 0.0001;
+      const progress = getProgressFromPointer(moveEvent, track);
       const previous = normalized.segments[activeBoundaryIndex - 1];
       const next = normalized.segments[activeBoundaryIndex];
       if (!previous || !next) return;
 
       const clamped = Math.min(
-        Math.max(progress, previous.startProgress + minGap),
-        next.endProgress - minGap,
+        Math.max(progress, previous.startProgress + MIN_SEGMENT_LENGTH),
+        next.endProgress - MIN_SEGMENT_LENGTH,
       );
 
       previous.endProgress = clamped;
       next.startProgress = clamped;
-      config = normalizePiecewiseHeadingInterpolation(normalized);
-      dispatch("change");
+      moved = true;
+      commitConfig(normalized);
     };
 
     const upHandler = () => {
       activeBoundaryIndex = null;
       window.removeEventListener("pointermove", moveHandler);
       window.removeEventListener("pointerup", upHandler);
-      notifyChange(true);
+      if (moved) commitConfig(config, true);
     };
 
     window.addEventListener("pointermove", moveHandler);
@@ -182,13 +198,17 @@
       event,
       event.currentTarget as HTMLElement,
     );
-    splitSegment(progress);
-    notifyChange();
+    splitSegmentAt(segmentAtProgress(progress), progress);
   }
 
+  /**
+   * `replaceParameters` swaps the parameter bag wholesale, so switching
+   * interpolation type leaves none of the previous type's angles behind.
+   */
   function updateSegment(
     index: number,
     patch: Partial<PiecewiseHeadingSegment>,
+    replaceParameters = false,
   ) {
     if (locked) return;
     const normalized = normalizePiecewiseHeadingInterpolation(config);
@@ -198,24 +218,25 @@
     normalized.segments[index] = {
       ...segment,
       ...patch,
-      parameters: patch.parameters
-        ? {
-            ...(segment.parameters || {}),
-            ...patch.parameters,
-          }
-        : segment.parameters,
+      parameters: replaceParameters
+        ? patch.parameters
+        : patch.parameters
+          ? {
+              ...(segment.parameters || {}),
+              ...patch.parameters,
+            }
+          : segment.parameters,
     };
 
-    config = normalizePiecewiseHeadingInterpolation(normalized);
-    notifyChange();
+    // These fields fire on `change`, not `input`, so each call is a finished edit.
+    commitConfig(normalized, true);
   }
 
   function setInterpolationType(
     index: number,
     interpolationType: PiecewiseHeadingInterpolationType,
   ) {
-    const segment =
-      normalizePiecewiseHeadingInterpolation(config).segments[index];
+    const segment = segments[index];
     if (!segment) return;
 
     const nextParameters = (() => {
@@ -237,49 +258,58 @@
       return undefined;
     })();
 
-    updateSegment(index, {
-      interpolationType,
-      reversed: segmentSupportsReverse(interpolationType)
-        ? !!segment.reversed
-        : false,
-      parameters: nextParameters,
-    });
+    updateSegment(
+      index,
+      {
+        interpolationType,
+        reversed: segmentSupportsReverse(interpolationType)
+          ? !!segment.reversed
+          : false,
+        parameters: nextParameters,
+      },
+      true,
+    );
   }
 </script>
 
 <div
-  class="space-y-3 rounded border border-neutral-700 bg-neutral-950/60 p-3 text-xs text-neutral-200"
+  class="w-full space-y-2 border border-[#333333] bg-[#1a1a1a] px-2 py-2 text-[11px] leading-tight text-gray-300"
 >
-  <div class="flex flex-wrap items-center justify-between gap-2">
+  <div
+    class="flex flex-wrap items-start justify-between gap-2 border-b border-[#333333] pb-2"
+  >
     <div>
-      <div class="font-medium text-neutral-100">Piecewise Heading</div>
-      <div class="text-neutral-400">
+      <div class="font-semibold text-gray-100">Piecewise Heading</div>
+      <div class="text-[10px] {LABEL_CLASS}">
         Click the timeline to add a boundary. Drag markers to adjust segment
         breaks.
       </div>
     </div>
-    <label class="flex items-center gap-2 text-[11px] text-neutral-300">
+    <label class="flex items-center gap-2 text-[10px] text-gray-400">
       <input type="checkbox" bind:checked={advancedMode} disabled={locked} />
       Advanced progress editing
     </label>
   </div>
 
   <div
-    class="relative h-4 rounded-full border border-neutral-700 bg-neutral-800/80"
+    bind:this={trackElement}
+    class="relative h-4 rounded border border-[#444444] bg-[#111111]"
     role="button"
     tabindex="0"
     aria-label="Piecewise progress timeline"
     onpointerdown={handleTimelineClick}
   >
-    {#each normalizePiecewiseHeadingInterpolation(config).segments as segment, index (index)}
+    {#each segments as segment, index (index)}
       <div
-        class="absolute top-0 h-full rounded-full opacity-80"
-        style={`left:${segment.startProgress * 100}%; width:${Math.max((segment.endProgress - segment.startProgress) * 100, 0.2)}%; background: linear-gradient(90deg, rgba(59,130,246,0.6), rgba(16,185,129,0.6));`}
+        class="absolute top-0 h-full {index % 2 === 0
+          ? 'bg-green-600/40'
+          : 'bg-green-600/20'}"
+        style={`left:${segment.startProgress * 100}%; width:${Math.max((segment.endProgress - segment.startProgress) * 100, 0.2)}%;`}
       ></div>
       {#if index > 0}
         <button
           type="button"
-          class="absolute top-1/2 z-10 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 bg-white shadow"
+          class="absolute top-1/2 z-10 h-4 w-2 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-[#666666] bg-[#dddddd] hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
           style={`left:${segment.startProgress * 100}%`}
           onpointerdown={(event) => beginBoundaryDrag(index, event)}
           disabled={locked}
@@ -291,25 +321,24 @@
 
   {#if validationMessage}
     <div
-      class="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200"
+      class="border border-amber-700 bg-amber-950/40 px-2 py-1 text-[10px] text-amber-300"
     >
       {validationMessage}
     </div>
   {/if}
 
   <div class="space-y-2">
-    {#each normalizePiecewiseHeadingInterpolation(config).segments as segment, index (index)}
-      <div class="rounded border border-neutral-700 bg-neutral-900/80 p-2">
+    {#each segments as segment, index (index)}
+      {@const linkedStart = linkedStartAngle(index)}
+      <div class="border border-[#333333] bg-[#222222] px-2 py-2">
         <div class="flex items-center justify-between gap-2">
-          <div class="text-[11px] font-semibold text-neutral-100">
+          <div class="font-semibold text-gray-100">
             Segment {index + 1}
           </div>
           <button
-            class="rounded border border-neutral-700 px-2 py-1 text-[10px] text-neutral-200 hover:bg-neutral-800 disabled:opacity-40"
+            class="{ACTION_CLASS} text-[10px]"
             onclick={() => removeSegment(index)}
-            disabled={locked ||
-              normalizePiecewiseHeadingInterpolation(config).segments.length <=
-                1}
+            disabled={locked || segments.length <= 1}
           >
             Delete
           </button>
@@ -317,35 +346,30 @@
 
         <div class="mt-2 grid gap-2 sm:grid-cols-2">
           <label class="space-y-1">
-            <div class="text-[11px] text-neutral-400">Start progress</div>
+            <div class={LABEL_CLASS}>Start progress</div>
             <input
               type="number"
-              min="0"
-              max="1"
-              step="0.001"
-              class="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-neutral-100"
+              class={FIELD_CLASS}
               value={segment.startProgress.toFixed(3)}
-              readonly={!advancedMode}
+              readonly
               disabled={locked}
-              onchange={(event) =>
-                updateSegment(index, {
-                  startProgress: Number(
-                    (event.currentTarget as HTMLInputElement).value,
-                  ),
-                })}
+              title="Segments run back to back, so this follows the previous segment's end."
             />
           </label>
           <label class="space-y-1">
-            <div class="text-[11px] text-neutral-400">End progress</div>
+            <div class={LABEL_CLASS}>End progress</div>
             <input
               type="number"
               min="0"
               max="1"
               step="0.001"
-              class="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-neutral-100"
+              class={FIELD_CLASS}
               value={segment.endProgress.toFixed(3)}
-              readonly={!advancedMode}
+              readonly={!advancedMode || index === segments.length - 1}
               disabled={locked}
+              title={index === segments.length - 1
+                ? "The last segment always ends at 1."
+                : undefined}
               onchange={(event) =>
                 updateSegment(index, {
                   endProgress: Number(
@@ -358,10 +382,10 @@
 
         <div class="mt-2 grid gap-2 sm:grid-cols-2">
           <label class="space-y-1 sm:col-span-1">
-            <div class="text-[11px] text-neutral-400">Interpolation type</div>
+            <div class={LABEL_CLASS}>Interpolation type</div>
             <select
-              class="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-neutral-100"
-              bind:value={segment.interpolationType}
+              class={FIELD_CLASS}
+              value={segment.interpolationType}
               disabled={locked}
               onchange={(event) =>
                 setInterpolationType(
@@ -378,7 +402,7 @@
 
           {#if segmentSupportsReverse(segment.interpolationType)}
             <label
-              class="flex items-end gap-2 rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300"
+              class="flex items-center gap-2 self-end rounded border border-[#444444] px-2 py-1 text-gray-300"
             >
               <input
                 type="checkbox"
@@ -394,17 +418,43 @@
           {/if}
         </div>
 
+        {#if index > 0 && segmentSupportsContinuation(segment.interpolationType)}
+          <label
+            class="mt-2 flex items-center gap-2 rounded border border-[#444444] px-2 py-1 text-gray-300"
+          >
+            <input
+              type="checkbox"
+              checked={!!segment.continueFromPrevious}
+              disabled={locked}
+              onchange={(event) =>
+                updateSegment(index, {
+                  continueFromPrevious: (
+                    event.currentTarget as HTMLInputElement
+                  ).checked,
+                })}
+            />
+            Continue from previous segment
+          </label>
+        {/if}
+
         {#if segment.interpolationType === "linear"}
           <div class="mt-2 grid gap-2 sm:grid-cols-2">
             <label class="space-y-1">
-              <div class="text-[11px] text-neutral-400">
-                Start heading (deg)
-              </div>
+              <div class={LABEL_CLASS}>Start heading (deg)</div>
               <input
                 type="number"
                 step="1"
-                class="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-neutral-100"
-                value={segment.parameters?.startDeg ?? 0}
+                class={FIELD_CLASS}
+                value={segment.continueFromPrevious
+                  ? (linkedStart?.toFixed(1) ?? "")
+                  : (segment.parameters?.startDeg ?? 0)}
+                readonly={segment.continueFromPrevious}
+                placeholder={segment.continueFromPrevious
+                  ? "follows the path"
+                  : undefined}
+                title={segment.continueFromPrevious && linkedStart === null
+                  ? "The previous segment ends at an angle set by the path shape, so this resolves in the animation."
+                  : undefined}
                 disabled={locked}
                 onchange={(event) =>
                   updateSegment(index, {
@@ -417,11 +467,11 @@
               />
             </label>
             <label class="space-y-1">
-              <div class="text-[11px] text-neutral-400">End heading (deg)</div>
+              <div class={LABEL_CLASS}>End heading (deg)</div>
               <input
                 type="number"
                 step="1"
-                class="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-neutral-100"
+                class={FIELD_CLASS}
                 value={segment.parameters?.endDeg ?? 0}
                 disabled={locked}
                 onchange={(event) =>
@@ -438,12 +488,21 @@
         {:else if segment.interpolationType === "constant"}
           <div class="mt-2">
             <label class="space-y-1">
-              <div class="text-[11px] text-neutral-400">Heading (deg)</div>
+              <div class={LABEL_CLASS}>Heading (deg)</div>
               <input
                 type="number"
                 step="1"
-                class="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-neutral-100"
-                value={segment.parameters?.degrees ?? 0}
+                class={FIELD_CLASS}
+                value={segment.continueFromPrevious
+                  ? (linkedStart?.toFixed(1) ?? "")
+                  : (segment.parameters?.degrees ?? 0)}
+                readonly={segment.continueFromPrevious}
+                placeholder={segment.continueFromPrevious
+                  ? "follows the path"
+                  : undefined}
+                title={segment.continueFromPrevious && linkedStart === null
+                  ? "The previous segment ends at an angle set by the path shape, so this resolves in the animation."
+                  : undefined}
                 disabled={locked}
                 onchange={(event) =>
                   updateSegment(index, {
@@ -459,11 +518,11 @@
         {:else if segment.interpolationType === "facing-point"}
           <div class="mt-2 grid gap-2 sm:grid-cols-2">
             <label class="space-y-1">
-              <div class="text-[11px] text-neutral-400">Target X</div>
+              <div class={LABEL_CLASS}>Target X</div>
               <input
                 type="number"
                 step="0.1"
-                class="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-neutral-100"
+                class={FIELD_CLASS}
                 value={segment.parameters?.point?.x ?? 0}
                 disabled={locked}
                 onchange={(event) =>
@@ -480,11 +539,11 @@
               />
             </label>
             <label class="space-y-1">
-              <div class="text-[11px] text-neutral-400">Target Y</div>
+              <div class={LABEL_CLASS}>Target Y</div>
               <input
                 type="number"
                 step="0.1"
-                class="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-neutral-100"
+                class={FIELD_CLASS}
                 value={segment.parameters?.point?.y ?? 0}
                 disabled={locked}
                 onchange={(event) =>
@@ -502,52 +561,24 @@
             </label>
           </div>
         {:else}
-          <div class="mt-2 text-[11px] text-neutral-400">
+          <div class="mt-2 text-[10px] text-gray-500">
             This segment uses the path tangent. No extra parameters are
             required.
           </div>
         {/if}
 
-        <div class="mt-2 text-[11px] text-neutral-400">
-          {#if advancedMode}
-            Progress: {segment.startProgress.toFixed(3)} to {segment.endProgress.toFixed(
-              3,
-            )}
-          {:else}
-            Progress values are read-only here. Enable advanced mode to edit
-            them manually.
-          {/if}
-        </div>
+        {#if !advancedMode && index < segments.length - 1}
+          <div class="mt-2 text-[10px] text-gray-500">
+            Drag the timeline to move this segment's end, or enable advanced
+            mode to type it.
+          </div>
+        {/if}
       </div>
     {/each}
   </div>
 
   <div class="flex justify-end">
-    <button
-      class="rounded border border-neutral-700 px-3 py-1 text-[11px] text-neutral-100 hover:bg-neutral-800 disabled:opacity-40"
-      onclick={() => {
-        if (locked) return;
-        const normalized = normalizePiecewiseHeadingInterpolation(config);
-        const last =
-          normalized.segments[normalized.segments.length - 1] ||
-          createDefaultPiecewiseHeadingInterpolation().segments[0];
-        const newSegment = segmentTemplate(last, last.endProgress, 1);
-        normalized.segments[normalized.segments.length - 1].endProgress =
-          Math.max(
-            0.5,
-            normalized.segments[normalized.segments.length - 1].endProgress,
-          );
-        normalized.segments.push({
-          ...newSegment,
-          startProgress:
-            normalized.segments[normalized.segments.length - 1].endProgress,
-          endProgress: 1,
-        });
-        config = normalizePiecewiseHeadingInterpolation(normalized);
-        notifyChange();
-      }}
-      disabled={locked}
-    >
+    <button class={ACTION_CLASS} onclick={addSegment} disabled={locked}>
       Add Segment
     </button>
   </div>

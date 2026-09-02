@@ -7,7 +7,10 @@ import type {
 } from "../../types";
 import { calculatePathTime } from "../../utils/timeCalculator";
 import { pathStem } from "../../utils/filename";
-import { CURVE_SAMPLES, flattenToAtomicSegments } from "../../utils/pathTraversal";
+import {
+  CURVE_SAMPLES,
+  flattenToAtomicSegments,
+} from "../../utils/pathTraversal";
 import { getCurvePoint } from "../../utils/math";
 import { LINE_WIDTH } from "../../config/defaults";
 
@@ -72,7 +75,9 @@ export function drawPathLayer(
     ctx.lineWidth = lineWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.setLineDash(locked && honorLocked ? [lineWidth * 1.5, lineWidth * 1.5] : []);
+    ctx.setLineDash(
+      locked && honorLocked ? [lineWidth * 1.5, lineWidth * 1.5] : [],
+    );
 
     ctx.beginPath();
     for (let i = 0; i <= CURVE_SAMPLES; i++) {

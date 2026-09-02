@@ -9,6 +9,7 @@ import { evaluatePiecewiseHeading } from "./headingInterpolation";
 import {
   CURVE_SAMPLES,
   approximateCurveLength,
+  curveCompletionAt,
   effectiveHeadingAt,
   flattenToAtomicSegments,
   type FlatSegment,
@@ -257,11 +258,7 @@ export function calculateRobotState(
       robotHeading = -evaluatePiecewiseHeading(
         lineHeading.piecewiseHeading,
         headingT,
-        {
-          points: curvePoints as BasePoint[],
-          currentPoint: lineTraversal.point,
-          tangentDegrees: lineTraversal.tangentDegrees,
-        },
+        { ...lineTraversal, curvePoints: curvePoints as BasePoint[] },
       );
     } else {
       switch (lineHeading.type) {
@@ -509,9 +506,10 @@ function segmentHeadingAt(
   localT: number,
 ): number {
   const curvePoints = segments[index].points;
+  const completion = curveCompletionAt(curvePoints, localT);
   // A group's heading replaces its children's and spans the whole group, so
   // both the rule and the t to read it at come from there.
-  const { heading, t } = effectiveHeadingAt(segments, index, localT);
+  const { heading, t } = effectiveHeadingAt(segments, index, completion);
 
   switch (heading.type) {
     case "linear":
@@ -524,11 +522,9 @@ function segmentHeadingAt(
       return getPointAndTangentAtProgress(curvePoints, localT, heading.reverse)
         .tangentDegrees;
     case "piecewise": {
-      const traversal = getPointAndTangentAtProgress(curvePoints, localT);
       return evaluatePiecewiseHeading(heading.piecewiseHeading, t, {
-        points: curvePoints,
-        currentPoint: traversal.point,
-        tangentDegrees: traversal.tangentDegrees,
+        ...getPointAndTangentAtProgress(curvePoints, localT),
+        curvePoints,
       });
     }
   }

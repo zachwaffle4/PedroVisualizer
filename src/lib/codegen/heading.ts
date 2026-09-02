@@ -1,8 +1,11 @@
 import type {
+  BasePoint,
   Heading,
   PiecewiseHeadingInterpolation,
   PiecewiseHeadingSegment,
 } from "../../types";
+import { piecewiseSegmentEndAngle } from "../../utils/headingInterpolation";
+import { curveGeometryAtCompletion } from "../../utils/pathTraversal";
 import type { HeadingCall, InterpolatorRef, PiecewiseNode } from "./types";
 
 export interface HeadingCallContext {
@@ -10,6 +13,8 @@ export interface HeadingCallContext {
   endPoseVar: string;
   endX: number;
   endY: number;
+  /** The curve this heading runs along, when it is a single segment's. */
+  curvePoints?: BasePoint[];
   definePose(
     nameHint: string,
     x: number,
@@ -61,7 +66,7 @@ function piecewiseCall(
       );
       return;
     }
-    const interpolator = interpolatorRef(segment, index, ctx);
+    const interpolator = interpolatorRef(segment, index, segments, ctx);
     if (!interpolator) return;
     nodes.push({
       untilT,
@@ -90,13 +95,40 @@ function piecewiseCall(
   return { kind: "piecewise", nodes };
 }
 
+/** Pedro cannot express a link, so it is resolved here and baked into a pose. */
+function linkedStartAngle(
+  segments: PiecewiseHeadingSegment[],
+  index: number,
+  ctx: HeadingCallContext,
+): number | null {
+  const segment = segments[index];
+  if (!segment.continueFromPrevious || index === 0) return null;
+
+  const geometry = ctx.curvePoints
+    ? {
+        ...curveGeometryAtCompletion(ctx.curvePoints, segment.startProgress),
+        curvePoints: ctx.curvePoints,
+      }
+    : undefined;
+
+  const angle = piecewiseSegmentEndAngle(segments, index - 1, geometry);
+  if (angle === null) {
+    ctx.warn(
+      `piecewise segment ${index + 1} continues from segment ${index}, whose angle depends on path geometry that is not available here; its own start angle was used instead`,
+    );
+  }
+  return angle;
+}
+
 function interpolatorRef(
   segment: PiecewiseHeadingSegment,
   index: number,
+  segments: PiecewiseHeadingSegment[],
   ctx: HeadingCallContext,
 ): InterpolatorRef | null {
   const parameters = segment.parameters ?? {};
   const label = `${ctx.endPoseVar}Segment${index + 1}`;
+  const linkedStart = linkedStartAngle(segments, index, ctx);
 
   switch (segment.interpolationType) {
     case "tangential":
@@ -108,7 +140,7 @@ function interpolatorRef(
           `${label}Heading`,
           ctx.endX,
           ctx.endY,
-          parameters.degrees ?? 0,
+          linkedStart ?? parameters.degrees ?? 0,
         ),
       };
     case "linear":
@@ -118,7 +150,7 @@ function interpolatorRef(
           `${label}Start`,
           ctx.endX,
           ctx.endY,
-          parameters.startDeg ?? 0,
+          linkedStart ?? parameters.startDeg ?? 0,
         ),
         endPoseVar: ctx.definePose(
           `${label}End`,

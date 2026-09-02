@@ -40,6 +40,83 @@ export function approximateCurveLength(
   return length;
 }
 
+/** Cumulative arc length at each of `samples + 1` evenly spaced parameters. */
+function arcLengthTable(points: BasePoint[], samples: number): number[] {
+  const table = [0];
+  let travelled = 0;
+  let previousPoint = points[0];
+
+  for (let index = 1; index <= samples; index += 1) {
+    const point = getCurvePoint(index / samples, points);
+    travelled += Math.hypot(
+      point.x - previousPoint.x,
+      point.y - previousPoint.y,
+    );
+    table.push(travelled);
+    previousPoint = point;
+  }
+
+  return table;
+}
+
+/**
+ * Arc-length fraction at a curve parameter. Pedro's `PiecewiseInterpolator`
+ * keys segment boundaries on this rather than on the parameter itself.
+ */
+export function curveCompletionAt(
+  points: BasePoint[],
+  parameter: number,
+  samples = CURVE_SAMPLES,
+): number {
+  const target = clamp(parameter, 0, 1);
+  if (points.length < 2 || target <= 0) return 0;
+
+  const table = arcLengthTable(points, samples);
+  const total = table[samples];
+  if (total <= 1e-9) return target;
+
+  const step = Math.min(Math.floor(target * samples), samples - 1);
+  const withinStep = target * samples - step;
+  const travelled = table[step] + (table[step + 1] - table[step]) * withinStep;
+
+  return clamp(travelled / total, 0, 1);
+}
+
+/** The inverse of `curveCompletionAt`. */
+export function curveParameterAt(
+  points: BasePoint[],
+  completion: number,
+  samples = CURVE_SAMPLES,
+): number {
+  const target = clamp(completion, 0, 1);
+  if (points.length < 2 || target <= 0) return 0;
+
+  const table = arcLengthTable(points, samples);
+  const total = table[samples];
+  if (total <= 1e-9) return target;
+
+  const targetLength = target * total;
+  let step = 0;
+  while (step < samples - 1 && table[step + 1] < targetLength) step += 1;
+
+  const spanLength = table[step + 1] - table[step];
+  const withinStep =
+    spanLength <= 1e-9 ? 0 : (targetLength - table[step]) / spanLength;
+
+  return clamp((step + withinStep) / samples, 0, 1);
+}
+
+/** Where the robot sits, and which way the curve runs, at an arc-length fraction. */
+export function curveGeometryAtCompletion(
+  points: BasePoint[],
+  completion: number,
+): { point: BasePoint; tangentDegrees: number } {
+  return getPointAndTangentAtProgress(
+    points,
+    curveParameterAt(points, completion),
+  );
+}
+
 export function getPointAndTangentAtProgress(
   points: BasePoint[],
   progress: number,

@@ -1,33 +1,45 @@
 import type {
+  AtomicPath,
   BasePoint,
   Heading,
   PiecewiseHeadingInterpolation,
   PiecewiseHeadingInterpolationType,
   PiecewiseHeadingSegment,
+  Point,
 } from "../types";
 import {
   clamp,
+  getTangentAngle,
   interpolateAngleDegrees,
   normalizeAngleDegrees,
   radiansToDegrees,
+  shortestRotation,
 } from "./math";
+import { curveGeometryAtCompletion, lineCurvePoints } from "./pathTraversal";
 
-const MIN_SEGMENT_LENGTH = 0.0001;
+/** Shortest stretch of progress a segment is allowed to cover. */
+export const MIN_SEGMENT_LENGTH = 0.0001;
 
-/** Sample count used when approximating a curve's arc length. */
-export const CURVE_SAMPLES = 100;
+/** `getPointAndTangentAtProgress` in ./pathTraversal returns this shape. */
+export interface HeadingGeometry {
+  /** Where the robot sits, in field inches. */
+  point: BasePoint;
+  /** The curve's tangent there, in degrees counter-clockwise from +x. */
+  tangentDegrees: number;
+  /** Needed to read geometry somewhere other than where the robot is. */
+  curvePoints?: BasePoint[];
+}
 
 /**
  * The single angle a heading rule resolves to at one end of its segment.
  *
- * Tangential headings have no fixed angle without the surrounding geometry, so
- * they resolve to 0 here; callers that need the real tangent (the time
- * calculator) use `getLineStartHeading` / `getLineEndHeading` in ./math, which
- * take the neighbouring points into account.
+ * Tangential and facing-point rules have no fixed angle on their own, so
+ * `geometry` has to be supplied for those to resolve to anything but 0.
  */
 export function headingAngleAt(
   heading: Heading,
   role: "start" | "end",
+  geometry?: HeadingGeometry,
 ): number {
   switch (heading.type) {
     case "constant":
@@ -35,9 +47,82 @@ export function headingAngleAt(
     case "linear":
       return role === "start" ? heading.startDeg : heading.endDeg;
     case "tangential":
-      return 0;
+      return geometry
+        ? normalizeAngleDegrees(
+            geometry.tangentDegrees + (heading.reverse ? 180 : 0),
+          )
+        : 0;
     case "piecewise":
-      return piecewiseEdgeHeading(heading.piecewiseHeading, role);
+      return geometry
+        ? evaluatePiecewiseHeading(
+            heading.piecewiseHeading,
+            role === "start" ? 0 : 1,
+            geometry,
+          )
+        : piecewiseEdgeHeading(heading.piecewiseHeading, role);
+  }
+}
+
+/**
+ * The heading a segment starts at, in field degrees.
+ *
+ * `heading` and `t` are passed in when a group overrides this segment's own
+ * heading: the rule then belongs to the group and `t` is the position within
+ * it, so a sweep is read part-way through rather than restarted.
+ */
+export function getLineStartHeading(
+  line: AtomicPath | undefined,
+  previousPoint: Point,
+  heading: Heading | undefined = line?.heading,
+  t = 0,
+): number {
+  if (!line || !line.endPoint || !heading) return 0;
+
+  const nextPoint =
+    line.controlPoints.length > 0 ? line.controlPoints[0] : line.endPoint;
+  return edgeHeading(heading, t, {
+    point: previousPoint,
+    tangentDegrees: getTangentAngle(previousPoint, nextPoint),
+    curvePoints: lineCurvePoints(previousPoint, line),
+  });
+}
+
+/** The heading a segment ends at. See `getLineStartHeading` for `heading`/`t`. */
+export function getLineEndHeading(
+  line: AtomicPath | undefined,
+  previousPoint: Point,
+  heading: Heading | undefined = line?.heading,
+  t = 1,
+): number {
+  if (!line || !line.endPoint || !heading) return 0;
+
+  const priorPoint =
+    line.controlPoints.length > 0
+      ? line.controlPoints[line.controlPoints.length - 1]
+      : previousPoint;
+  return edgeHeading(heading, t, {
+    point: line.endPoint,
+    tangentDegrees: getTangentAngle(priorPoint, line.endPoint),
+    curvePoints: lineCurvePoints(previousPoint, line),
+  });
+}
+
+function edgeHeading(
+  heading: Heading,
+  t: number,
+  geometry: HeadingGeometry,
+): number {
+  switch (heading.type) {
+    case "constant":
+      return heading.degrees;
+    case "linear":
+      return shortestRotation(heading.startDeg, heading.endDeg, t);
+    case "tangential":
+      return normalizeAngleDegrees(
+        geometry.tangentDegrees + (heading.reverse ? 180 : 0),
+      );
+    case "piecewise":
+      return evaluatePiecewiseHeading(heading.piecewiseHeading, t, geometry);
   }
 }
 
@@ -81,17 +166,91 @@ function defaultParameters(
   }
 }
 
-function areParametersEqual(
-  left: PiecewiseHeadingSegment["parameters"],
-  right: PiecewiseHeadingSegment["parameters"],
-): boolean {
-  return JSON.stringify(left || {}) === JSON.stringify(right || {});
-}
-
 export function segmentSupportsReverse(
   type: PiecewiseHeadingInterpolationType,
 ): boolean {
   return type === "linear" || type === "tangential" || type === "facing-point";
+}
+
+/** Only these have a start angle for `continueFromPrevious` to drive. */
+export function segmentSupportsContinuation(
+  type: PiecewiseHeadingInterpolationType,
+): boolean {
+  return type === "linear" || type === "constant";
+}
+
+/**
+ * The angle segment `index` finishes on, following links back through earlier
+ * segments. Null when it needs geometry the caller did not supply.
+ */
+export function piecewiseSegmentEndAngle(
+  segments: PiecewiseHeadingSegment[],
+  index: number,
+  geometry?: HeadingGeometry,
+): number | null {
+  const segment = segments[index];
+  if (!segment) return null;
+
+  const parameters = segment.parameters ?? {};
+
+  switch (segment.interpolationType) {
+    case "linear":
+      return normalizeAngleDegrees(parameters.endDeg ?? 0);
+    case "constant":
+      return segment.continueFromPrevious && index > 0
+        ? piecewiseSegmentEndAngle(segments, index - 1, geometry)
+        : normalizeAngleDegrees(parameters.degrees ?? 0);
+    case "tangential":
+    case "facing-point": {
+      if (!geometry) return null;
+      const boundary = geometryAtCompletion(geometry, segment.endProgress);
+      return segment.interpolationType === "tangential"
+        ? tangentialAngle(boundary, segment.reversed)
+        : facingPointAngle(boundary, parameters.point, segment.reversed);
+    }
+  }
+}
+
+/** The angle a segment begins on, which a link takes from the segment before. */
+function segmentStartAngle(
+  segments: PiecewiseHeadingSegment[],
+  index: number,
+  geometry: HeadingGeometry,
+  fallback: number,
+): number {
+  const segment = segments[index];
+  if (!segment.continueFromPrevious || index === 0) return fallback;
+  return piecewiseSegmentEndAngle(segments, index - 1, geometry) ?? fallback;
+}
+
+function geometryAtCompletion(
+  geometry: HeadingGeometry,
+  completion: number,
+): HeadingGeometry {
+  if (!geometry.curvePoints) return geometry;
+  return {
+    ...curveGeometryAtCompletion(geometry.curvePoints, completion),
+    curvePoints: geometry.curvePoints,
+  };
+}
+
+function tangentialAngle(
+  geometry: HeadingGeometry,
+  reversed?: boolean,
+): number {
+  return normalizeAngleDegrees(geometry.tangentDegrees + (reversed ? 180 : 0));
+}
+
+function facingPointAngle(
+  geometry: HeadingGeometry,
+  target: BasePoint | undefined,
+  reversed?: boolean,
+): number {
+  const point = target || { x: 0, y: 0 };
+  const base = radiansToDegrees(
+    Math.atan2(point.y - geometry.point.y, point.x - geometry.point.x),
+  );
+  return normalizeAngleDegrees(base + (reversed ? 180 : 0));
 }
 
 export function createDefaultPiecewiseSegment(): PiecewiseHeadingSegment {
@@ -126,6 +285,9 @@ function normalizeSegment(
     reversed: segmentSupportsReverse(interpolationType)
       ? !!segment.reversed
       : false,
+    continueFromPrevious:
+      segmentSupportsContinuation(interpolationType) &&
+      !!segment.continueFromPrevious,
     parameters,
   };
 }
@@ -148,6 +310,9 @@ export function normalizePiecewiseHeadingInterpolation(
     const source = sorted[index];
     const isLast = index === sorted.length - 1;
     const startProgress = index === 0 ? 0 : cursor;
+    // Out of room: this segment and every one after it would be zero-length,
+    // which Pedro rejects, so stop and let the previous one run to 1.
+    if (index > 0 && startProgress >= 1) break;
     const desiredEnd = isLast
       ? 1
       : Math.max(source.endProgress, startProgress + MIN_SEGMENT_LENGTH);
@@ -161,6 +326,7 @@ export function normalizePiecewiseHeadingInterpolation(
       ...source,
       startProgress,
       endProgress,
+      continueFromPrevious: index > 0 && !!source.continueFromPrevious,
     });
 
     cursor = endProgress;
@@ -170,80 +336,66 @@ export function normalizePiecewiseHeadingInterpolation(
     return createDefaultPiecewiseHeadingInterpolation();
   }
 
-  const merged: PiecewiseHeadingSegment[] = [];
-  for (const segment of repaired) {
-    const previous = merged[merged.length - 1];
-    if (
-      previous &&
-      previous.endProgress === segment.startProgress &&
-      previous.interpolationType === segment.interpolationType &&
-      previous.reversed === segment.reversed &&
-      areParametersEqual(previous.parameters, segment.parameters)
-    ) {
-      previous.endProgress = segment.endProgress;
-      continue;
-    }
-    merged.push({
-      ...segment,
-      parameters: segment.parameters
-        ? { ...segment.parameters, point: clonePoint(segment.parameters.point) }
-        : undefined,
-    });
-  }
+  // Adjacent segments holding identical settings must not be collapsed: a
+  // fresh split produces two identical halves, so merging undoes every split.
+  repaired[0].startProgress = 0;
+  repaired[repaired.length - 1].endProgress = 1;
 
-  merged[0].startProgress = 0;
-  merged[merged.length - 1].endProgress = 1;
-
-  return { segments: merged };
+  return { segments: repaired };
 }
 
+/**
+ * Reports what normalization had to repair. Takes the raw input: the
+ * normalized form always passes, since normalizing is what fixes these.
+ */
 export function validatePiecewiseHeadingInterpolation(
   input?: PiecewiseHeadingInterpolation,
 ): string | null {
-  const normalized = normalizePiecewiseHeadingInterpolation(input);
-
-  if (!normalized.segments.length) {
-    return "Piecewise heading requires at least one segment.";
+  const segments = input?.segments;
+  if (!segments?.length) {
+    return "Piecewise heading requires at least one segment; a default one is in use.";
   }
 
-  if (normalized.segments[0].startProgress !== 0) {
-    return "The first segment must start at 0.";
+  const ordered = [...segments].sort(
+    (left, right) => left.startProgress - right.startProgress,
+  );
+
+  if (ordered[0].startProgress !== 0) {
+    return "The first segment must start at 0; it has been extended back.";
   }
 
-  if (normalized.segments[normalized.segments.length - 1].endProgress !== 1) {
-    return "The final segment must end at 1.";
+  if (ordered[ordered.length - 1].endProgress !== 1) {
+    return "The final segment must end at 1; it has been extended forward.";
   }
 
-  for (let index = 0; index < normalized.segments.length; index += 1) {
-    const segment = normalized.segments[index];
+  for (let index = 0; index < ordered.length; index += 1) {
+    const segment = ordered[index];
     if (segment.endProgress <= segment.startProgress) {
-      return "Piecewise segments must have positive length.";
+      return "Piecewise segments must have positive length; a segment has been resized.";
     }
 
-    if (segment.interpolationType === "linear") {
-      const params = segment.parameters || {};
-      if (params.startDeg === undefined || params.endDeg === undefined) {
-        return "Linear piecewise segments require start and end headings.";
-      }
+    const parameters = segment.parameters || {};
+    if (
+      segment.interpolationType === "linear" &&
+      (parameters.startDeg === undefined || parameters.endDeg === undefined)
+    ) {
+      return "A linear segment is missing its start or end heading; 0 is in use.";
     }
 
-    if (segment.interpolationType === "constant") {
-      const params = segment.parameters || {};
-      if (params.degrees === undefined) {
-        return "Constant piecewise segments require a heading value.";
-      }
+    if (
+      segment.interpolationType === "constant" &&
+      parameters.degrees === undefined
+    ) {
+      return "A constant segment is missing its heading; 0 is in use.";
     }
 
-    if (segment.interpolationType === "facing-point") {
-      const point = segment.parameters?.point;
-      if (!point) {
-        return "Facing-point segments require a target point.";
-      }
+    if (segment.interpolationType === "facing-point" && !parameters.point) {
+      return "A facing-point segment is missing its target; (0, 0) is in use.";
     }
 
-    const next = normalized.segments[index + 1];
+    const next = ordered[index + 1];
     if (next && segment.endProgress !== next.startProgress) {
-      return "Piecewise segments must not contain gaps or overlaps.";
+      return "Piecewise segments must not leave gaps or overlap; they have been closed up.";
     }
   }
 
@@ -254,24 +406,21 @@ export function degreesToRadians(degrees: number): number {
   return (normalizeAngleDegrees(degrees) * Math.PI) / 180;
 }
 
+/** `progress` is arc-length completion, not the curve parameter. */
 export function evaluatePiecewiseHeading(
   interpolation: PiecewiseHeadingInterpolation,
   progress: number,
-  options: {
-    points: BasePoint[];
-    currentPoint: BasePoint;
-    tangentDegrees: number;
-  },
+  geometry: HeadingGeometry,
 ): number {
-  const normalized = normalizePiecewiseHeadingInterpolation(interpolation);
-  const segment =
-    normalized.segments.find((entry, index) => {
-      const isLast = index === normalized.segments.length - 1;
-      return (
-        progress >= entry.startProgress &&
-        (progress <= entry.endProgress || isLast)
-      );
-    }) || normalized.segments[normalized.segments.length - 1];
+  const segments =
+    normalizePiecewiseHeadingInterpolation(interpolation).segments;
+  const last = segments.length - 1;
+  const index = segments.findIndex(
+    (entry, entryIndex) =>
+      progress >= entry.startProgress &&
+      (progress <= entry.endProgress || entryIndex === last),
+  );
+  const segment = segments[index] ?? segments[last];
 
   const localT = clamp(
     (progress - segment.startProgress) /
@@ -280,30 +429,36 @@ export function evaluatePiecewiseHeading(
     1,
   );
 
-  const sourcePoint = options.currentPoint;
-  const sourceTangent = options.tangentDegrees;
-
   switch (segment.interpolationType) {
     case "constant":
-      return normalizeAngleDegrees(segment.parameters?.degrees ?? 0);
+      return normalizeAngleDegrees(
+        segmentStartAngle(
+          segments,
+          index,
+          geometry,
+          segment.parameters?.degrees ?? 0,
+        ),
+      );
     case "linear":
       return interpolateAngleDegrees(
-        segment.parameters?.startDeg ?? 0,
+        segmentStartAngle(
+          segments,
+          index,
+          geometry,
+          segment.parameters?.startDeg ?? 0,
+        ),
         segment.parameters?.endDeg ?? 0,
         localT,
         !!segment.reversed,
       );
-    case "facing-point": {
-      const point = segment.parameters?.point || { x: 0, y: 0 };
-      const base = radiansToDegrees(
-        Math.atan2(point.y - sourcePoint.y, point.x - sourcePoint.x),
+    case "facing-point":
+      return facingPointAngle(
+        geometry,
+        segment.parameters?.point,
+        segment.reversed,
       );
-      return normalizeAngleDegrees(base + (segment.reversed ? 180 : 0));
-    }
     case "tangential":
     default:
-      return normalizeAngleDegrees(
-        sourceTangent + (segment.reversed ? 180 : 0),
-      );
+      return tangentialAngle(geometry, segment.reversed);
   }
 }

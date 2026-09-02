@@ -20,12 +20,16 @@ export {
   degreesToRadians,
   headingAngleAt,
   evaluatePiecewiseHeading,
+  getLineStartHeading,
+  getLineEndHeading,
 } from "./headingInterpolation";
+export type { HeadingGeometry } from "./headingInterpolation";
 
 export {
   CURVE_SAMPLES,
   lineCurvePoints,
   approximateCurveLength,
+  curveCompletionAt,
   getPointAndTangentAtProgress,
   flattenToAtomicSegments,
   segmentStartById,
